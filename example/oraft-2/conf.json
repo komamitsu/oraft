@@ -1,0 +1,16 @@
+{
+    "node_id": 2,
+    "nodes": [
+        {"id": 1, "host": "localhost", "port": 7891},
+        {"id": 2, "host": "localhost", "port": 7892},
+        {"id": 3, "host": "localhost", "port": 7893},
+        {"id": 4, "host": "localhost", "port": 7894},
+        {"id": 5, "host": "localhost", "port": 7895}
+    ],
+    "log_file": "example/oraft-2/oraft.log",
+    "log_level": "INFO",
+    "state_dir": "example/oraft-2/state",
+    "election_timeout_millis": 5000,
+    "heartbeat_interval_millis": 500
+}
+

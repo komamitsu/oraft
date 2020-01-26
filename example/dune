@@ -1,0 +1,4 @@
+(executable
+ (name oraft_example)
+ (libraries oraft))
+

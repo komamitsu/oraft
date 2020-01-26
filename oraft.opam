@@ -1,0 +1,26 @@
+opam-version: "2.0"
+version: "0.1.0"
+maintainer: "komamitsu@gmail.com"
+authors: ["Mitsunori Komatsu"]
+homepage: "https://github.com/komamitsu/oraft"
+bug-reports: "https://github.com/komamitsu/oraft/issues"
+dev-repo: "git+https://github.com/komamitsu/oraft.git"
+description: "Raft consensus algorithm implemented in OCaml"
+synopsis: "Raft consensus algorithm implemented in OCaml"
+license: "Apache"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+depends: [
+    "dune" {build}
+    "threads"
+    "core"
+    "cohttp-lwt-unix"
+    "yojson"
+    "ppx_deriving"
+    "ppx_deriving_yojson"
+    "ounit" {with-test}
+]
+

@@ -1,0 +1,4 @@
+(test
+ (name oraft_test)
+ (libraries oUnit fileutils oraft))
+
