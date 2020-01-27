@@ -2,6 +2,14 @@ open Core
 open Lwt
 open Base
 
+(** Followers (§5.2):
+  * - Respond to RPCs from candidates and leaders
+  *
+  * - If election timeout elapses without receiving AppendEntries
+  *   RPC from current leader or granting vote to candidate:
+  *   convert to candidate
+  *)
+
 let mode = Some FOLLOWER
 
 type t = {
@@ -38,6 +46,9 @@ let run t () =
       | APPEND_ENTRIES_REQUEST x ->
           Append_entries_handler.handle ~state:t.state ~logger:t.logger
             ~apply_log:t.apply_log
+            (** If election timeout elapses without receiving AppendEntries
+             *  RPC from current leader or granting vote to candidate:
+             *  convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_new_leader:(fun () -> ())
             ~param:x
@@ -51,6 +62,9 @@ let run t () =
       function
       | REQUEST_VOTE_REQUEST x ->
           Request_vote_handler.handle ~state:t.state ~logger:t.logger
+            (** If election timeout elapses without receiving AppendEntries
+             *  RPC from current leader or granting vote to candidate:
+             *  convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_new_leader:(fun () -> ())
             ~param:x

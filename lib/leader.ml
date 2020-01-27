@@ -3,6 +3,27 @@ open Lwt
 open Base
 open State
 
+(** Leaders:
+  * - Upon election: send initial empty AppendEntries RPCs
+  *   (heartbeat) to each server; repeat during idle periods to
+  *   prevent election timeouts (§5.2)
+  *
+  * - If command received from client: append entry to local log,
+  *   respond after entry applied to state machine (§5.3)
+  *
+  * - If last log index ≥ nextIndex for a follower: send
+  *   AppendEntries RPC with log entries starting at nextIndex
+  *
+  * - If successful: update nextIndex and matchIndex for
+  *   follower (§5.3)
+  *
+  * - If AppendEntries fails because of log inconsistency:
+  *   decrement nextIndex and retry (§5.3)
+  *
+  * - If there exists an N such that N > commitIndex, a majority
+  *   of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+  *   set commitIndex = N (§5.3, §5.4).
+  *)
 let mode = Some LEADER
 
 type t = {
@@ -43,6 +64,13 @@ let append_entries t =
     Logger.debug t.logger
     @@ Printf.sprintf "Peer[%d]: %s" i
     @@ VolatileStateOnLeader.show_nth_peer leader_state i;
+    (** If last log index ≥ nextIndex for a follower: send
+     *  AppendEntries RPC with log entries starting at nextIndex
+     * - If successful: update nextIndex and matchIndex for
+     *   follower (§5.3)
+     * - If AppendEntries fails because of log inconsistency:
+     *   decrement nextIndex and retry (§5.3)
+     *)
     let prev_log_index = (VolatileStateOnLeader.next_index leader_state i) - 1 in
     let prev_log_term =
       match PersistentLog.get log prev_log_index with
@@ -83,13 +111,22 @@ let append_entries t =
       ~url_path:"append_entries" ~request_json ~converter:(fun response_json ->
         match Params.append_entries_response_of_yojson response_json with
         | Ok param when param.success ->
+            (** If successful: update nextIndex and matchIndex for follower (§5.3) *)
             VolatileStateOnLeader.set_next_index leader_state i
             @@ (prev_log_index + List.length entries + 1);
+
+            (** All Servers:
+              * - If RPC request or response contains term T > currentTerm:
+              *   set currentTerm = T, convert to follower (§5.1)
+              *)
             if PersistentState.detect_new_leader t.logger
                  t.state.common.persistent_state param.term
             then t.should_step_down <- true;
+
             Ok (Params.APPEND_ENTRIES_RESPONSE param)
         | Ok _ ->
+            (** If AppendEntries fails because of log inconsistency:
+             *  decrement nextIndex and retry (§5.3) *)
             VolatileStateOnLeader.next_index leader_state i - 1
             |> VolatileStateOnLeader.set_next_index leader_state i;
             Error "Need to try with decremented index"
@@ -109,6 +146,9 @@ let append_entries t =
        majority;
   Lwt.return
   @@
+  (** If there exists an N such that N > commitIndex, a majority
+   *  of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+   *  set commitIndex = N (§5.3, §5.4). *)
   if n >= Conf.majority_of_nodes t.conf
   then (
     VolatileState.update_commit_index t.state.common.volatile_state
@@ -123,6 +163,8 @@ let heartbeat_span_sec t =
 
 
 let handle_client_command t ~(param : Params.client_command_request) =
+  (** If command received from client: append entry to local log,
+   *  respond after entry applied to state machine (§5.3) *)
   Logger.debug t.logger
   @@ Printf.sprintf "Received client_command %s"
   @@ Params.show_client_command_request param;
@@ -163,6 +205,10 @@ let run t () =
           Append_entries_handler.handle ~state:t.state.common ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
+            (** All Servers:
+              * - If RPC request or response contains term T > currentTerm:
+              *   set currentTerm = T, convert to follower (§5.1)
+              *)
             ~cb_new_leader:(fun () -> t.should_step_down <- true)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -176,6 +222,10 @@ let run t () =
       | REQUEST_VOTE_REQUEST x ->
           Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
+            (** All Servers:
+              * - If RPC request or response contains term T > currentTerm:
+              *   set currentTerm = T, convert to follower (§5.1)
+              *)
             ~cb_new_leader:(fun () -> t.should_step_down <- true)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -192,6 +242,9 @@ let run t () =
     Request_dispatcher.create (Conf.my_node t.conf).port t.lock t.logger
       handlers
   in
+  (** Upon election: send initial empty AppendEntries RPCs
+   *  (heartbeat) to each server; repeat during idle periods to
+   *  prevent election timeouts (§5.2) *)
   let append_entries_thread =
     let sleep = heartbeat_span_sec t in
     let rec loop () =

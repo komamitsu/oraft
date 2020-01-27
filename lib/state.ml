@@ -1,12 +1,19 @@
 open Core
 
+(** Persistent state on all servers:
+    (Updated on stable storage before responding to RPCs) *)
 module PersistentState = struct
+  (** Just persistent format *)
   type state = { mutable current_term : int; mutable voted_for : int option }
-  [@@deriving show, yojson]
+  [@@deriving yojson]
 
   type t = {
     path : string;
+    (** latest term server has seen (initialized to 0 
+     *  on first boot, increases monotonically) *)
     mutable current_term : int;
+
+    (** candidateId that received vote in current term (or null if none) *)
     mutable voted_for : int option;
   }
   [@@deriving show, yojson]
@@ -82,6 +89,7 @@ module PersistentState = struct
     t.voted_for <- voted_for
 end
 
+(** Persistent log state *)
 module PersistentLogEntry = struct
   type t = { term : int; index : int; data : string } [@@deriving show, yojson]
 
@@ -95,7 +103,11 @@ end
 module PersistentLog = struct
   type t = {
     path : string;
+    (** Just for convenience *)
     mutable last_index : int;
+
+    (** log entries; each entry contains command for state machine,
+     *  and term when entry was received by leader (first index is 1) *)
     mutable list : PersistentLogEntry.t list;
   }
   [@@deriving show, yojson]
@@ -188,8 +200,17 @@ module PersistentLog = struct
     t.list <- List.rev rev_list
 end
 
+(** Volatile state on all servers *)
 module VolatileState = struct
-  type t = { mutable commit_index : int; mutable last_applied : int }
+  type t = {
+    (** index of highest log entry known to be
+     *  committed (initialized to 0, increases monotonically) *)
+    mutable commit_index : int;
+
+    (** index of highest log entry applied to state
+     *  machine (initialized to 0, increases monotonically) *)
+    mutable last_applied : int
+  }
   [@@deriving show]
 
   let create () = { commit_index = 0; last_applied = 0 }
@@ -228,8 +249,18 @@ module VolatileState = struct
     loop ()
 end
 
+(** Volatile state on leaders:
+  * (Reinitialized after election) *)
 module VolatileStateOnLeader = struct
-  type peer = { mutable next_index : int; mutable match_index : int }
+  type peer = {
+    (** for each server, index of the next log entry to send
+     *  to that server (initialized to leader last log index + 1) *)
+    mutable next_index : int;
+    
+    (** for each server, index of highest log entry known to be replicated on server
+     *  (initialized to 0, increases monotonically) *)
+    mutable match_index : int
+  }
   [@@deriving show]
 
   type t = peer list [@@deriving show]

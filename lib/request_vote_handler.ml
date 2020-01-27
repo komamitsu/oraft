@@ -2,6 +2,14 @@ open Core
 open Cohttp_lwt_unix
 open State
 
+(** Invoked by candidates to gather votes (§5.2).
+ *
+ * Receiver implementation:
+ * 1. Reply false if term < currentTerm (§5.1)
+ * 2. If votedFor is null or candidateId, and candidate’s log is at
+ *    least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+ *)
+
 let handle
     ~state
     ~logger
@@ -11,6 +19,7 @@ let handle
   let result =
     let last_log_index = PersistentLog.last_index state.persistent_log in
     let last_log = PersistentLog.get state.persistent_log last_log_index in
+    (** Reply false if term < currentTerm (§5.1) *)
     if PersistentState.detect_old_leader logger state.persistent_state
          param.term
     then false
@@ -22,6 +31,8 @@ let handle
       true
     )
     else (
+      (** If votedFor is null or candidateId, and candidate’s log is at
+       *  least as up-to-date as receiver’s log, grant vote (§5.2, §5.4) *)
       match PersistentState.voted_for state.persistent_state with
       | Some v -> (
           param.candidate_id = v
@@ -31,6 +42,7 @@ let handle
           | Some x -> param.last_log_term = x.term
           | None -> true
         )
+      (** TODO: In case of voted_for is null, it's needed to check log indexes *)
       | None -> true
     )
   in

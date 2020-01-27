@@ -3,6 +3,17 @@ open Lwt
 open Base
 open State
 
+(**
+ * Candidates (§5.2):
+ * - On conversion to candidate, start election:
+ *   - Increment currentTerm
+ *   - Vote for self
+ *   - Reset election timer
+ *   - Send RequestVote RPCs to all other servers
+ * - If votes received from majority of servers: become leader
+ * - If AppendEntries RPC received from new leader: convert to follower
+ * - If election timeout elapses: start new election
+ *)
 let mode = Some CANDIDATE
 
 type t = {
@@ -45,9 +56,14 @@ let request_vote t =
           ~converter:(fun response_json ->
             match Params.request_vote_response_of_yojson response_json with
             | Ok param ->
+                (** All Servers:
+                  * - If RPC request or response contains term T > currentTerm:
+                  *   set currentTerm = T, convert to follower (§5.1)
+                  *)
                 if PersistentState.detect_new_leader t.logger
                      t.state.persistent_state param.term
                 then t.next_mode <- Some FOLLOWER;
+
                 Ok (Params.REQUEST_VOTE_RESPONSE param)
             | Error _ as err -> err)
       in
@@ -57,10 +73,13 @@ let request_vote t =
 let run t () =
   Logger.info t.logger "### Candidate: Start ###";
   Lock.with_lock t.lock (fun () ->
+      (** Increment currentTerm *)
       PersistentState.increment_current_term t.state.persistent_state;
+      (** Vote for self *)
       PersistentState.set_voted_for t.logger t.state.persistent_state
       @@ Some t.conf.node_id);
   State.log t.logger t.state;
+  (** Reset election timer *)
   let election_timer = Timer.create t.logger t.conf.election_timeout_millis in
   let handlers = Stdlib.Hashtbl.create 1 in
   let open Params in
@@ -75,6 +94,11 @@ let run t () =
           Append_entries_handler.handle ~state:t.state ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
+            (** All Servers:
+              * - If RPC request or response contains term T > currentTerm:
+              *   set currentTerm = T, convert to follower (§5.1)
+              *)
+            (** If AppendEntries RPC received from new leader: convert to follower *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -88,6 +112,10 @@ let run t () =
       | REQUEST_VOTE_REQUEST x ->
           Request_vote_handler.handle ~state:t.state ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
+            (** All Servers:
+              * - If RPC request or response contains term T > currentTerm:
+              *   set currentTerm = T, convert to follower (§5.1)
+              *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -95,6 +123,7 @@ let run t () =
     Request_dispatcher.create (Conf.my_node t.conf).port t.lock t.logger
       handlers
   in
+  (** Send RequestVote RPCs to all other servers *)
   let votes = request_vote t in
   let received_votes =
     votes
@@ -115,6 +144,7 @@ let run t () =
     let majority = Conf.majority_of_nodes t.conf in
     if n >= majority
     then (
+      (** If votes received from majority of servers: become leader *)
       Logger.info t.logger
       @@ Printf.sprintf
            "Received majority votes (received: %d, majority: %d). Moving to \
@@ -135,6 +165,8 @@ let run t () =
   in
   let election_timer_thread =
     Timer.start election_timer (fun () ->
+        (** If election timeout elapses: start new election *)
+        t.next_mode <- Some CANDIDATE;
         Lwt.wakeup stopper ();
         Lwt.cancel votes)
   in

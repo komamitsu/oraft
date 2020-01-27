@@ -1,14 +1,7 @@
+(** Persistent state on all servers:
+    (Updated on stable storage before responding to RPCs) *)
 module PersistentState :
   sig
-    type state
-
-    val show_state : state -> string
-
-    val state_to_yojson : state -> Yojson.Safe.t
-
-    val state_of_yojson :
-      Yojson.Safe.t -> state Ppx_deriving_yojson_runtime.error_or
-
     type t
 
     val show : t -> string
@@ -40,6 +33,7 @@ module PersistentState :
     val set_voted_for : Logger.t -> t -> int option -> unit
   end
 
+(** Persistent log state *)
 module PersistentLogEntry :
   sig
     type t = { term : int; index : int; data : string; }
@@ -84,6 +78,7 @@ module PersistentLog :
     val append : t -> int -> int -> string list -> unit
   end
 
+(** Volatile state on all servers *)
 module VolatileState :
   sig
     type t
@@ -108,6 +103,8 @@ module VolatileState :
     val apply_logs : t -> (int -> unit) -> unit
   end
 
+(** Volatile state on leaders:
+  * (Reinitialized after election) *)
 module VolatileStateOnLeader :
   sig
     type peer
