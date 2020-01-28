@@ -1,12 +1,5 @@
-dock-collection-brackets=true
+margin=160
+profile=conventional
 if-then-else=keyword-first
-let-binding-spacing=sparse
-parens-ite=true
-parens-tuple=always
-wrap-fun-args=true
-break-fun-decl=smart
-break-fun-sig=smart
-break-infix-before-func=true
-function-indent-nested=auto
-break-separators=after
-indicate-multiline-delimiters=closing-on-separate-line
+comment-check=false
+break-string-literals=never

@@ -16,14 +16,12 @@ let int_of_level = function
   | WARN -> 3
   | ERROR -> 4
 
-
 let string_of_level = function
   | TRACE -> "TRACE"
   | DEBUG -> "DEBUG"
   | INFO -> "INFO"
   | WARN -> "WARN"
   | ERROR -> "ERROR"
-
 
 let level_of_string s =
   match s with
@@ -34,10 +32,8 @@ let level_of_string s =
   | "ERROR" -> ERROR
   | _ -> failwith (Printf.sprintf "Unexpected value: %s" s)
 
-
 let create node_id mode output_path level =
   { node_id; mode; output_path; level = level_of_string level }
-
 
 let write t level msg =
   let mode =
@@ -52,10 +48,8 @@ let write t level msg =
           Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
             t.node_id mode msg
         in
-        ignore (output_string file s)
-      )
+        ignore (output_string file s))
       ~append:true
-
 
 let debug t msg = write t DEBUG msg
 

@@ -10,55 +10,52 @@ open State
  *    least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
  *)
 
-let handle
-    ~state
-    ~logger
-    ~cb_valid_request
-    ~cb_new_leader
+let handle ~state ~logger ~cb_valid_request ~cb_new_leader
     ~(param : Params.request_vote_request) =
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
-
   let result =
     let last_log_index = PersistentLog.last_index persistent_log in
     let last_log = PersistentLog.get persistent_log last_log_index in
     (** Reply false if term < currentTerm (§5.1) *)
-    if PersistentState.detect_old_leader logger persistent_state
-         param.term
+    if PersistentState.detect_old_leader logger persistent_state param.term
     then false
-    else if PersistentState.detect_new_leader logger persistent_state
-              param.term
+    else if PersistentState.detect_new_leader logger persistent_state param.term
     then (
       PersistentState.update_current_term persistent_state param.term;
       cb_new_leader ();
-      true
-    )
-    else (
+      true )
+    else
       (** If votedFor is null or candidateId, and candidate’s log is at
        *  least as up-to-date as receiver’s log, grant vote (§5.2, §5.4) *)
       let up_to_date_as_receiver_log =
-        param.last_log_index >= last_log_index &&
-          match last_log with
-          | Some x -> param.last_log_term = x.term
-          | None -> true
+        param.last_log_index >= last_log_index
+        &&
+        match last_log with
+        | Some x -> param.last_log_term = x.term
+        | None -> true
       in
       match PersistentState.voted_for persistent_state with
       | Some v when param.candidate_id = v -> up_to_date_as_receiver_log
       | Some _ -> false
       | None -> up_to_date_as_receiver_log
-    )
   in
   if result
   then (
     cb_valid_request ();
-    PersistentState.set_voted_for logger persistent_state (Some param.candidate_id);
-    Logger.debug logger (Printf.sprintf "Received request_vote that meets the requirement. param:%s" (Params.show_request_vote_request param));
-    State.log logger state
-  )
+    PersistentState.set_voted_for logger persistent_state
+      (Some param.candidate_id);
+    Logger.debug logger
+      (Printf.sprintf
+         "Received request_vote that meets the requirement. param:%s"
+         (Params.show_request_vote_request param));
+    State.log logger state )
   else (
-    Logger.debug logger (Printf.sprintf "Received request_vote, but param didn't meet the requirement. param:%s" (Params.show_request_vote_request param));
-    State.log logger state
-  );
+    Logger.debug logger
+      (Printf.sprintf
+         "Received request_vote, but param didn't meet the requirement. param:%s"
+         (Params.show_request_vote_request param));
+    State.log logger state );
   let response_body =
     let record : Params.request_vote_response =
       {

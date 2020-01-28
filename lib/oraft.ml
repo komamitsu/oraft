@@ -19,8 +19,7 @@ let start conf_file ~apply_log =
     }
   in
   let rec process state_exec : unit Lwt.t =
-    state_exec ()
-    >>= fun next ->
+    state_exec () >>= fun next ->
     let next_state_exec =
       match next with
       | FOLLOWER -> Follower.run (Follower.init ~conf ~lock ~apply_log ~state)
@@ -47,18 +46,16 @@ let start conf_file ~apply_log =
           | Error _ as err -> err)
     in
     match PersistentState.voted_for state.persistent_state with
-    | Some node_id -> (
+    | Some node_id ->
         let current_leader_node = Conf.peer_node conf node_id in
-        request current_leader_node
-        >>= fun result ->
-        Lwt.return (match result with
+        request current_leader_node >>= fun result ->
+        Lwt.return
+          ( match result with
           | Some (Params.CLIENT_COMMAND_RESPONSE x) -> x.success
           | Some _ ->
               Logger.error client_logger "Shouldn't reach here";
               false
-          | None -> false
-        )
-      )
+          | None -> false )
     | None -> Lwt.return false
   in
   {

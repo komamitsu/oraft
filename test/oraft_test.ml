@@ -76,11 +76,9 @@ let test_persistent_log_append _ =
       let log = PersistentLog.load tmpdir in
       assert_all log)
 
-
 let suite =
   "ORaft tests"
   >::: [ "test_persistent_log_append" >:: test_persistent_log_append ]
-
 
 let () =
   Printexc.record_backtrace true;

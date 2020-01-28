@@ -35,11 +35,9 @@ let init ~conf ~lock ~apply_log ~state =
     next_mode = None;
   }
 
-
 let request_vote t =
   let persistent_state = t.state.persistent_state in
   let persistent_log = t.state.persistent_log in
-
   Lock.with_lock t.lock (fun () ->
       let request_json =
         let last_log = PersistentLog.last_log persistent_log in
@@ -63,25 +61,23 @@ let request_vote t =
                   * - If RPC request or response contains term T > currentTerm:
                   *   set currentTerm = T, convert to follower (§5.1)
                   *)
-                if PersistentState.detect_new_leader t.logger persistent_state param.term
+                if PersistentState.detect_new_leader t.logger persistent_state
+                     param.term
                 then t.next_mode <- Some FOLLOWER;
-
                 Ok (Params.REQUEST_VOTE_RESPONSE param)
             | Error _ as err -> err)
       in
       Lwt_list.map_p request (Conf.peer_nodes t.conf))
 
-
 let run t () =
   let persistent_state = t.state.persistent_state in
-
   Logger.info t.logger "### Candidate: Start ###";
   Lock.with_lock t.lock (fun () ->
       (** Increment currentTerm *)
       PersistentState.increment_current_term persistent_state;
       (** Vote for self *)
-      PersistentState.set_voted_for t.logger persistent_state (Some t.conf.node_id)
-  );
+      PersistentState.set_voted_for t.logger persistent_state
+        (Some t.conf.node_id));
   State.log t.logger t.state;
   (** Reset election timer *)
   let election_timer = Timer.create t.logger t.conf.election_timeout_millis in
@@ -98,10 +94,10 @@ let run t () =
           Append_entries_handler.handle ~state:t.state ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            (** All Servers:
+              (** All Servers:
               * - If RPC request or response contains term T > currentTerm:
               *   set currentTerm = T, convert to follower (§5.1) *)
-            (** If AppendEntries RPC received from new leader: convert to follower *)
+              (** If AppendEntries RPC received from new leader: convert to follower *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -115,7 +111,7 @@ let run t () =
       | REQUEST_VOTE_REQUEST x ->
           Request_vote_handler.handle ~state:t.state ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
-            (** All Servers:
+              (** All Servers:
               * - If RPC request or response contains term T > currentTerm:
               *   set currentTerm = T, convert to follower (§5.1)
               *)
@@ -129,33 +125,35 @@ let run t () =
   (** Send RequestVote RPCs to all other servers *)
   let votes = request_vote t in
   let received_votes =
-    votes
-    >>= (fun responses ->
-          List.fold_left ~init:1 (* Implicitly voting for myself *)
-            ~f:(fun a r ->
-              match r with
-              | Some param -> (
-                  match param with
-                  | Params.REQUEST_VOTE_RESPONSE param ->
-                      if param.vote_granted then a + 1 else a
-                  | _ -> failwith "Unexpected state"
-                )
-              | None -> a)
-            responses
-          |> Lwt.return)
+    ( votes >>= fun responses ->
+      List.fold_left ~init:1 (* Implicitly voting for myself *)
+        ~f:(fun a r ->
+          match r with
+          | Some param -> (
+              match param with
+              | Params.REQUEST_VOTE_RESPONSE param ->
+                  if param.vote_granted then a + 1 else a
+              | _ -> failwith "Unexpected state" )
+          | None -> a)
+        responses
+      |> Lwt.return )
     >>= fun n ->
     let majority = Conf.majority_of_nodes t.conf in
     if n >= majority
     then (
       (** If votes received from majority of servers: become leader *)
-      Logger.info t.logger (Printf.sprintf "Received majority votes (received: %d, majority: %d). Moving to Leader" n majority);
+      Logger.info t.logger
+        (Printf.sprintf
+           "Received majority votes (received: %d, majority: %d). Moving to Leader"
+           n majority);
       Timer.stop election_timer;
-      t.next_mode <- Some LEADER
-    )
+      t.next_mode <- Some LEADER )
     else (
-      Logger.info t.logger (Printf.sprintf "Didn't receive majority votes (received: %d, majority: %d). Trying again" n majority);
-      t.next_mode <- Some CANDIDATE
-    );
+      Logger.info t.logger
+        (Printf.sprintf
+           "Didn't receive majority votes (received: %d, majority: %d). Trying again"
+           n majority);
+      t.next_mode <- Some CANDIDATE );
     Lwt.return ()
   in
   let election_timer_thread =
@@ -165,10 +163,9 @@ let run t () =
         Lwt.wakeup stopper ();
         Lwt.cancel votes)
   in
-  Lwt.join [ election_timer_thread; received_votes; server ]
-  >>= fun () ->
-  Lwt.return (
-    match t.next_mode with
+  Lwt.join [ election_timer_thread; received_votes; server ] >>= fun () ->
+  Lwt.return
+    ( match t.next_mode with
     | Some LEADER -> LEADER
     | Some CANDIDATE -> CANDIDATE
     | Some _ ->
@@ -176,5 +173,4 @@ let run t () =
         CANDIDATE
     | _ ->
         Logger.error t.logger "Unexpected state";
-        CANDIDATE
-  )
+        CANDIDATE )

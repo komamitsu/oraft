@@ -29,7 +29,6 @@ let init ~conf ~lock ~apply_log ~state =
     state;
   }
 
-
 let run t () =
   Logger.info t.logger "### Follower: Start ###";
   State.log t.logger t.state;
@@ -45,10 +44,11 @@ let run t () =
       function
       | APPEND_ENTRIES_REQUEST x ->
           Append_entries_handler.handle ~state:t.state ~logger:t.logger
-            ~apply_log:t.apply_log
-            (** If election timeout elapses without receiving AppendEntries
-             *  RPC from current leader or granting vote to candidate:
-             *  convert to candidate *)
+            ~apply_log:
+              t.apply_log
+              (** If election timeout elapses without receiving AppendEntries
+               *  RPC from current leader or granting vote to candidate:
+               *  convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_new_leader:(fun () -> ())
             ~param:x
@@ -61,10 +61,12 @@ let run t () =
         | Error _ as e -> e),
       function
       | REQUEST_VOTE_REQUEST x ->
-          Request_vote_handler.handle ~state:t.state ~logger:t.logger
-            (** If election timeout elapses without receiving AppendEntries
-             *  RPC from current leader or granting vote to candidate:
-             *  convert to candidate *)
+          Request_vote_handler.handle ~state:t.state
+            ~logger:
+              t.logger
+              (** If election timeout elapses without receiving AppendEntries
+               *  RPC from current leader or granting vote to candidate:
+               *  convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_new_leader:(fun () -> ())
             ~param:x

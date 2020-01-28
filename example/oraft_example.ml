@@ -9,11 +9,9 @@ let parse_command s =
   let args = List.tl parts in
   (cmd, args)
 
-
 let with_flush_stdout f =
   f ();
   Core.Out_channel.flush stdout
-
 
 let oraft conf_file =
   Oraft.start conf_file ~apply_log:(fun i s ->
@@ -26,20 +24,17 @@ let oraft conf_file =
           ();
           Core.Out_channel.flush Core.Out_channel.stdout)
 
-
 let server port (oraft : Oraft.t) =
   let callback _conn req body =
     let meth = req |> Request.meth in
     let path = req |> Request.uri |> Uri.path in
     match (meth, path) with
     | `POST, "/command" ->
-        body |> Cohttp_lwt.Body.to_string
-        >>= fun request_body ->
-        oraft.post_command request_body
-        >>= fun result ->
+        body |> Cohttp_lwt.Body.to_string >>= fun request_body ->
+        oraft.post_command request_body >>= fun result ->
         let status_code, response_body =
           if result
-          then (
+          then
             let cmd, args = parse_command request_body in
             match cmd with
             | "SET" ->
@@ -48,10 +43,8 @@ let server port (oraft : Oraft.t) =
             | "GET" -> (
                 match Hashtbl.find_opt kvs (List.nth args 0) with
                 | Some x -> (`OK, x)
-                | None -> (`Not_found, "")
-              )
+                | None -> (`Not_found, "") )
             | _ -> (`Bad_request, "")
-          )
           else (`Internal_server_error, "")
         in
         Server.respond_string ~status:status_code ~body:response_body ()
@@ -59,13 +52,11 @@ let server port (oraft : Oraft.t) =
   in
   Server.create ~mode:(`TCP (`Port port)) (Server.make ~callback ())
 
-
 let main =
   let port, conf_file =
     let args = Core.Sys.get_argv () in
     if args |> Array.length >= 3
-    then
-      args.(1) |> int_of_string, args.(2)
+    then (args.(1) |> int_of_string, args.(2))
     else failwith "Config file isn't specified"
   in
   let oraft = oraft conf_file in
