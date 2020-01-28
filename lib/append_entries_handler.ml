@@ -27,6 +27,10 @@ let append_entries
     ~cb_new_leader =
   cb_valid_request ();
 
+  let persistent_state = state.persistent_state in
+  let persistent_log = state.persistent_log in
+  let volatile_state = state.volatile_state in
+
   if PersistentState.detect_new_leader logger state.persistent_state param.term
   then (
     PersistentState.update_current_term state.persistent_state param.term;
@@ -35,24 +39,21 @@ let append_entries
 
   (** If leaderCommit > commitIndex,
    *  set commitIndex = min(leaderCommit, index of last new entry) *)
-  if VolatileState.detect_higher_commit_index logger state.volatile_state
+  if VolatileState.detect_higher_commit_index logger volatile_state
        param.leader_commit
   then
-    (* TODO: Revisit -> "index of last new entry" *)
-    VolatileState.update_commit_index state.volatile_state param.leader_commit;
+    VolatileState.update_commit_index volatile_state (min param.leader_commit (PersistentLog.last_index persistent_log));
 
   if List.length param.entries > 0
   then (
-    Logger.debug logger
-    @@ Printf.sprintf "This param isn't empty, so appending entries(lentgh: %d)"
-    @@ List.length param.entries;
+    Logger.debug logger (Printf.sprintf "This param isn't empty, so appending entries(lentgh: %d)" (List.length param.entries));
     (** If an existing entry conflicts with a new one (same index
      *  but different terms), delete the existing entry and all that
      *  follow it (§5.3)
      *
      * Append any new entries not already in the log *)
-    PersistentLog.append state.persistent_log
-      (PersistentState.current_term state.persistent_state)
+    PersistentLog.append persistent_log
+      (PersistentState.current_term persistent_state)
       (param.prev_log_index + 1) param.entries
   );
 
@@ -60,16 +61,12 @@ let append_entries
     * - If commitIndex > lastApplied: increment lastApplied, apply
     *   log[lastApplied] to state machine (§5.3)
     *)
-  VolatileState.apply_logs state.volatile_state (fun i ->
-      Logger.debug logger
-      @@ Printf.sprintf
-           "Applying %dth entry. state.volatile_state.commit_index: %d" i
-      @@ VolatileState.commit_index state.volatile_state;
-      let log = PersistentLog.get_exn state.persistent_log i in
+  VolatileState.apply_logs volatile_state (fun i ->
+      Logger.debug logger (Printf.sprintf "Applying %dth entry. state.volatile_state.commit_index: %d" i (VolatileState.commit_index volatile_state));
+      let log = PersistentLog.get_exn persistent_log i in
       apply_log log.index log.data;
-      Logger.debug logger
-      @@ Printf.sprintf "Applyed %dth entry: %s" i
-      @@ PersistentLogEntry.show log)
+      Logger.debug logger (Printf.sprintf "Applyed %dth entry: %s" i (PersistentLogEntry.show log))
+  )
 
 
 let handle
@@ -79,25 +76,20 @@ let handle
     ~cb_valid_request
     ~cb_new_leader
     ~(param : Params.append_entries_request) =
+  let persistent_state = state.persistent_state in
+  let persistent_log = state.persistent_log in
+  let stored_prev_log = PersistentLog.get persistent_log param.prev_log_index in
   let result =
-    if PersistentState.detect_old_leader logger state.persistent_state
+    if PersistentState.detect_old_leader logger persistent_state
          param.term
     (** Reply false if term < currentTerm (§5.1) *)
     then false
-    else if PersistentLog.last_index state.persistent_log < param.prev_log_index
-            || PersistentLog.last_index state.persistent_log <> 0
-               && Option.is_none
-                  @@ PersistentLog.get state.persistent_log param.prev_log_index
+    else if match stored_prev_log with Some l -> l.term = param.prev_log_term | None -> true
     then (
-      (* TODO: Reply false if log doesn’t contain an entry at prevLogIndex
-       *       whose term matches prevLogTerm (§5.3) *)
+      (** Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
       Logger.warn logger
-      @@ Printf.sprintf
-           "Received a request that doesn't meet requirement.\n\
-            param:%s,\n\
-            state:%s"
-           (Params.show_append_entries_request param)
-           (PersistentLog.show state.persistent_log);
+        (Printf.sprintf "Received a request that doesn't meet requirement.\nparam:%s,\nstate:%s"
+        (Params.show_append_entries_request param) (PersistentLog.show persistent_log));
       cb_valid_request ();
       false
     )
@@ -109,11 +101,10 @@ let handle
     )
   in
   let response_body =
-    to_string
-    @@ `Assoc
-         [
-           ("term", `Int (PersistentState.current_term state.persistent_state));
-           ("success", `Bool result);
-         ]
+    `Assoc
+       [
+         ("term", `Int (PersistentState.current_term persistent_state));
+         ("success", `Bool result);
+       ] |> to_string
   in
   Server.respond_string ~status:`OK ~body:response_body ()

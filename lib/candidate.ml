@@ -37,12 +37,15 @@ let init ~conf ~lock ~apply_log ~state =
 
 
 let request_vote t =
+  let persistent_state = t.state.persistent_state in
+  let persistent_log = t.state.persistent_log in
+
   Lock.with_lock t.lock (fun () ->
       let request_json =
-        let last_log = PersistentLog.last_log t.state.persistent_log in
+        let last_log = PersistentLog.last_log persistent_log in
         let r : Params.request_vote_request =
           {
-            term = PersistentState.current_term t.state.persistent_state;
+            term = PersistentState.current_term persistent_state;
             candidate_id = t.conf.node_id;
             last_log_term = last_log.term;
             last_log_index = last_log.index;
@@ -60,24 +63,25 @@ let request_vote t =
                   * - If RPC request or response contains term T > currentTerm:
                   *   set currentTerm = T, convert to follower (§5.1)
                   *)
-                if PersistentState.detect_new_leader t.logger
-                     t.state.persistent_state param.term
+                if PersistentState.detect_new_leader t.logger persistent_state param.term
                 then t.next_mode <- Some FOLLOWER;
 
                 Ok (Params.REQUEST_VOTE_RESPONSE param)
             | Error _ as err -> err)
       in
-      Lwt_list.map_p request @@ Conf.peer_nodes t.conf)
+      Lwt_list.map_p request (Conf.peer_nodes t.conf))
 
 
 let run t () =
+  let persistent_state = t.state.persistent_state in
+
   Logger.info t.logger "### Candidate: Start ###";
   Lock.with_lock t.lock (fun () ->
       (** Increment currentTerm *)
-      PersistentState.increment_current_term t.state.persistent_state;
+      PersistentState.increment_current_term persistent_state;
       (** Vote for self *)
-      PersistentState.set_voted_for t.logger t.state.persistent_state
-      @@ Some t.conf.node_id);
+      PersistentState.set_voted_for t.logger persistent_state (Some t.conf.node_id)
+  );
   State.log t.logger t.state;
   (** Reset election timer *)
   let election_timer = Timer.create t.logger t.conf.election_timeout_millis in
@@ -96,8 +100,7 @@ let run t () =
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             (** All Servers:
               * - If RPC request or response contains term T > currentTerm:
-              *   set currentTerm = T, convert to follower (§5.1)
-              *)
+              *   set currentTerm = T, convert to follower (§5.1) *)
             (** If AppendEntries RPC received from new leader: convert to follower *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
@@ -145,20 +148,12 @@ let run t () =
     if n >= majority
     then (
       (** If votes received from majority of servers: become leader *)
-      Logger.info t.logger
-      @@ Printf.sprintf
-           "Received majority votes (received: %d, majority: %d). Moving to \
-            Leader"
-           n majority;
+      Logger.info t.logger (Printf.sprintf "Received majority votes (received: %d, majority: %d). Moving to Leader" n majority);
       Timer.stop election_timer;
       t.next_mode <- Some LEADER
     )
     else (
-      Logger.info t.logger
-      @@ Printf.sprintf
-           "Didn't receive majority votes (received: %d, majority: %d). Trying \
-            again"
-           n majority;
+      Logger.info t.logger (Printf.sprintf "Didn't receive majority votes (received: %d, majority: %d). Trying again" n majority);
       t.next_mode <- Some CANDIDATE
     );
     Lwt.return ()
@@ -172,14 +167,14 @@ let run t () =
   in
   Lwt.join [ election_timer_thread; received_votes; server ]
   >>= fun () ->
-  Lwt.return
-  @@
-  match t.next_mode with
-  | Some LEADER -> LEADER
-  | Some CANDIDATE -> CANDIDATE
-  | Some _ ->
-      Logger.error t.logger "Unexpected state: FOLLOWER";
-      CANDIDATE
-  | _ ->
-      Logger.error t.logger "Unexpected state";
-      CANDIDATE
+  Lwt.return (
+    match t.next_mode with
+    | Some LEADER -> LEADER
+    | Some CANDIDATE -> CANDIDATE
+    | Some _ ->
+        Logger.error t.logger "Unexpected state: FOLLOWER";
+        CANDIDATE
+    | _ ->
+        Logger.error t.logger "Unexpected state";
+        CANDIDATE
+  )

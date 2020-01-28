@@ -17,9 +17,9 @@ let from_file file : t =
   match of_yojson json with
   | Ok t ->
       Unix.mkdir_p t.state_dir;
-      Unix.mkdir_p @@ Filename.dirname t.log_file;
+      Unix.mkdir_p (Filename.dirname t.log_file);
       t
-  | Error err -> failwith @@ Printf.sprintf "Failed to parse JSON: %s" err
+  | Error err -> failwith (Printf.sprintf "Failed to parse JSON: %s" err)
 
 
 let my_node t = List.find_exn t.nodes ~f:(fun node -> node.id = t.node_id)

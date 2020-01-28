@@ -51,20 +51,19 @@ let start conf_file ~apply_log =
         let current_leader_node = Conf.peer_node conf node_id in
         request current_leader_node
         >>= fun result ->
-        Lwt.return
-        @@
-        match result with
-        | Some (Params.CLIENT_COMMAND_RESPONSE x) -> x.success
-        | Some _ ->
-            Logger.error client_logger "Shouldn't reach here";
-            false
-        | None -> false
+        Lwt.return (match result with
+          | Some (Params.CLIENT_COMMAND_RESPONSE x) -> x.success
+          | Some _ ->
+              Logger.error client_logger "Shouldn't reach here";
+              false
+          | None -> false
+        )
       )
     | None -> Lwt.return false
   in
   {
     conf;
     process =
-      process (Follower.run @@ Follower.init ~conf ~lock ~apply_log ~state);
+      process (Follower.run (Follower.init ~conf ~lock ~apply_log ~state));
     post_command;
   }

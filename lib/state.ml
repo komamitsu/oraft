@@ -40,7 +40,7 @@ module PersistentState = struct
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
 
 
-  let log logger t = Logger.debug logger @@ "PersistentState : " ^ show t
+  let log logger t = Logger.debug logger ("PersistentState : " ^ show t)
 
   let current_term t = t.current_term
 
@@ -57,9 +57,7 @@ module PersistentState = struct
   let detect_new_leader logger t other_term =
     if other_term > t.current_term
     then (
-      Logger.info logger
-      @@ Printf.sprintf "Detected new leader's term: %d, state.term: %d"
-           other_term t.current_term;
+      Logger.info logger (Printf.sprintf "Detected new leader's term: %d, state.term: %d" other_term t.current_term);
       true
     )
     else false
@@ -68,9 +66,7 @@ module PersistentState = struct
   let detect_old_leader logger t other_term =
     if other_term < t.current_term
     then (
-      Logger.info logger
-      @@ Printf.sprintf "Detected old leader's term: %d, state.term: %d"
-           other_term t.current_term;
+      Logger.info logger (Printf.sprintf "Detected old leader's term: %d, state.term: %d" other_term t.current_term);
       true
     )
     else false
@@ -83,9 +79,7 @@ module PersistentState = struct
       | Some x -> "Some " ^ string_of_int x
       | None -> "None"
     in
-    Logger.info logger
-    @@ Printf.sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
-         (to_string voted_for);
+    Logger.info logger (Printf.sprintf "Setting voted_for from %s to %s" (to_string t.voted_for) (to_string voted_for));
     t.voted_for <- voted_for
 end
 
@@ -97,7 +91,7 @@ module PersistentLogEntry = struct
 
   let from_string s = s
 
-  let log logger t = Logger.debug logger @@ "PersistentLogEntry : " ^ show t
+  let log logger t = Logger.debug logger ("PersistentLogEntry : " ^ show t)
 end
 
 module PersistentLog = struct
@@ -129,15 +123,12 @@ module PersistentLog = struct
               | Ok log ->
                   if log.index < !cur
                   then
-                    failwith
-                    @@ Printf.sprintf
-                         "Unexpected lower index in logs. cur:%d, log:%s" !cur
-                    @@ PersistentLogEntry.show log;
+                    failwith (Printf.sprintf "Unexpected lower index in logs. cur:%d, log:%s" !cur (PersistentLogEntry.show log));
                   cur := log.index;
                   log
               | Error err ->
-                  failwith @@ Printf.sprintf "Failed to parse JSON: %s" err)
-            lines
+                  failwith (Printf.sprintf "Failed to parse JSON: %s" err)
+            ) lines
         in
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
@@ -150,14 +141,14 @@ module PersistentLog = struct
     to_string_list t |> List.iter ~f:(Logger.debug logger)
 
 
-  let get t index = List.nth t.list @@ (index - 1)
+  let get t index = List.nth t.list (index - 1)
 
-  let get_exn t index = List.nth_exn t.list @@ (index - 1)
+  let get_exn t index = List.nth_exn t.list (index - 1)
 
   let last_index t = t.last_index
 
   let last_log t =
-    match get t @@ last_index t with
+    match get t (last_index t) with
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
@@ -193,7 +184,7 @@ module PersistentLog = struct
           else (entry, tl_entries)
         in
         if phys_equal current entry then append_to_file t entry;
-        update_ (current :: xs) (i + 1) @@ rest
+        update_ (current :: xs) (i + 1) rest
       )
     in
     let rev_list = update_ [] 0 entries in
@@ -215,7 +206,7 @@ module VolatileState = struct
 
   let create () = { commit_index = 0; last_applied = 0 }
 
-  let log logger t = Logger.debug logger @@ "VolatileState: " ^ show t
+  let log logger t = Logger.debug logger ("VolatileState: " ^ show t)
 
   let update_commit_index t i = t.commit_index <- i
 
@@ -226,9 +217,7 @@ module VolatileState = struct
   let detect_higher_commit_index logger t other =
     if other > t.commit_index
     then (
-      Logger.debug logger
-      @@ Printf.sprintf "Leader commit(%d) is higher than state.term(%d)" other
-           t.commit_index;
+      Logger.debug logger (Printf.sprintf "Leader commit(%d) is higher than state.term(%d)" other t.commit_index);
       true
     )
     else false
@@ -269,7 +258,7 @@ module VolatileStateOnLeader = struct
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
 
-  let log logger t = Logger.debug logger @@ "VolatileStateOnLeader: " ^ show t
+  let log logger t = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
 
   let get t i = List.nth_exn t i
 
@@ -285,6 +274,7 @@ type common = {
   persistent_log : PersistentLog.t;
   volatile_state : VolatileState.t;
 }
+
 
 let log logger t =
   PersistentState.log logger t.persistent_state;

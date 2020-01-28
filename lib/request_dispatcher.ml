@@ -19,14 +19,11 @@ let create
     let path = req |> Request.uri |> Uri.path in
     let headers = req |> Request.headers in
     let node_id = Cohttp.Header.get headers "X-Raft-Node-Id" in
-    Logger.debug logger
-    @@ Printf.sprintf "Received: %s %s from %s"
-         (Cohttp.Code.string_of_method meth)
-         path
+    Logger.debug logger (Printf.sprintf "Received: %s %s from %s" (Cohttp.Code.string_of_method meth) path
          ( match node_id with
          | Some x -> x
          | None -> failwith "Missing node_id in HTTP header"
-         );
+         ));
     match Stdlib.Hashtbl.find_opt table (meth, path) with
     | Some (converter, processor) -> (
         body |> Cohttp_lwt.Body.to_string
@@ -35,15 +32,11 @@ let create
         match converter json with
         | Ok param -> Lock.with_lock lock (fun () -> processor param)
         | Error err ->
-            Logger.warn logger @@ Printf.sprintf "Invalid request: %s" err;
+            Logger.warn logger (Printf.sprintf "Invalid request: %s" err);
             Server.respond_string ~status:`Bad_request ~body:"" ()
       )
     | None ->
-        Logger.debug logger
-        @@ Printf.sprintf "Unknown request: %s %s"
-             (Cohttp.Code.string_of_method meth)
-             path;
+        Logger.debug logger (Printf.sprintf "Unknown request: %s %s" (Cohttp.Code.string_of_method meth) path);
         Server.respond_string ~status:`Not_found ~body:"" ()
   in
-  ( Server.create ~stop ~mode:(`TCP (`Port port)) (Server.make ~callback ()),
-    stopper )
+  ( Server.create ~stop ~mode:(`TCP (`Port port)) (Server.make ~callback ()), stopper )

@@ -32,7 +32,7 @@ let level_of_string s =
   | "INFO" -> INFO
   | "WARN" -> WARN
   | "ERROR" -> ERROR
-  | _ -> failwith @@ Printf.sprintf "Unexpected value: %s" s
+  | _ -> failwith (Printf.sprintf "Unexpected value: %s" s)
 
 
 let create node_id mode output_path level =
@@ -47,12 +47,13 @@ let write t level msg =
   then
     with_file t.output_path
       ~f:(fun file ->
-        let now = Core.Time.to_string @@ Core.Time.now () in
+        let now = Core.Time.to_string (Core.Time.now ()) in
         let s =
           Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
             t.node_id mode msg
         in
-        ignore @@ output_string file @@ s)
+        ignore (output_string file s)
+      )
       ~append:true
 
 

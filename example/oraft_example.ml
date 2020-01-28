@@ -62,9 +62,10 @@ let server port (oraft : Oraft.t) =
 
 let main =
   let port, conf_file =
-    if Core.Sys.get_argv () |> Array.length >= 3
+    let args = Core.Sys.get_argv () in
+    if args |> Array.length >= 3
     then
-      ((Core.Sys.get_argv ()).(1) |> int_of_string, (Core.Sys.get_argv ()).(2))
+      args.(1) |> int_of_string, args.(2)
     else failwith "Config file isn't specified"
   in
   let oraft = oraft conf_file in
