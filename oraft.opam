@@ -15,7 +15,6 @@ build: [
 
 depends: [
     "dune" {build}
-    "threads"
     "core"
     "cohttp-lwt-unix"
     "yojson"
