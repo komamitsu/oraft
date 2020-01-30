@@ -45,26 +45,40 @@ let server port (oraft : Oraft.t) =
     let meth = req |> Request.meth in
     let path = req |> Request.uri |> Uri.path in
     match (meth, path) with
-    | `POST, "/command" ->
+    | `POST, "/command" -> (
         body |> Cohttp_lwt.Body.to_string >>= fun request_body ->
-        oraft.post_command request_body >>= fun result ->
-        let status_code, response_body =
-          if result
-          then
-            let cmd, args = parse_command request_body in
-            match cmd with
-            | "SET" -> kvs_set args;
-                (`OK, "")
-            | "INCR" -> kvs_incr args;
-                (`OK, "")
-            | "GET" -> (
+          let (cmd, args) = parse_command request_body in
+          match cmd with
+          | "SET" -> (
+              oraft.post_command request_body >>= fun result ->
+                Lwt.return (
+                  if result then (
+                    kvs_set args;
+                    (`OK, "")
+                  )
+                  else (`Internal_server_error, "")
+                )
+          )
+          | "INCR" -> (
+              oraft.post_command request_body >>= fun result ->
+                Lwt.return (
+                  if result then (
+                    kvs_incr args;
+                    (`OK, "")
+                  )
+                  else (`Internal_server_error, "")
+                )
+          )
+          | "GET" -> (
+              Lwt.return (
                 match Hashtbl.find_opt kvs (List.nth args 0) with
                 | Some x -> (`OK, x)
-                | None -> (`Not_found, "") )
-            | _ -> (`Bad_request, "")
-          else (`Internal_server_error, "")
-        in
-        Server.respond_string ~status:status_code ~body:response_body ()
+                | None -> (`Not_found, "")
+              )
+          )
+          | _ -> Lwt.return (`Bad_request, "")
+    ) >>= fun (status_code, response_body) ->
+                Server.respond_string ~status:status_code ~body:response_body ()
     | _ -> Server.respond_string ~status:`Not_found ~body:"" ()
   in
   Server.create ~mode:(`TCP (`Port port)) (Server.make ~callback ())
