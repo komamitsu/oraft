@@ -72,8 +72,9 @@ let handle ~state ~logger ~apply_log ~cb_valid_request ~cb_new_leader
     if PersistentState.detect_old_leader logger persistent_state param.term
        (** Reply false if term < currentTerm (§5.1) *)
     then false
-    else if match stored_prev_log with
-            | Some l -> l.term = param.prev_log_term
+    else if not (param.prev_log_term = -1 && param.prev_log_index = 0) &&
+            match stored_prev_log with
+            | Some l -> l.term <> param.prev_log_term
             | None -> true
     then (
       (** Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
