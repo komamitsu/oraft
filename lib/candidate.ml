@@ -153,8 +153,6 @@ let run t () =
   in
   let election_timer_thread =
     Timer.start election_timer (fun () ->
-        (** If election timeout elapses: start new election *)
-        t.next_mode <- Some CANDIDATE;
         Lwt.wakeup stopper ();
         Lwt.cancel votes)
   in
@@ -168,4 +166,5 @@ let run t () =
         CANDIDATE
     | _ ->
         Logger.error t.logger "Unexpected state";
+        (** If election timeout elapses: start new election *)
         CANDIDATE )
