@@ -10,7 +10,7 @@ type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 
 type processor = Params.request -> response
 
-let create port lock logger
+let create port logger
     (table : (key, converter * processor) Stdlib.Hashtbl.t) :
     unit Lwt.t * unit Lwt.u =
   let stop, stopper = Lwt.wait () in
@@ -31,7 +31,7 @@ let create port lock logger
         body |> Cohttp_lwt.Body.to_string >>= fun body ->
         let json = Yojson.Safe.from_string body in
         match converter json with
-        | Ok param -> Lock.with_lock lock (fun () -> processor param)
+        | Ok param -> processor param
         | Error err ->
             Logger.warn logger (Printf.sprintf "Invalid request: %s" err);
             Server.respond_string ~status:`Bad_request ~body:"" () )

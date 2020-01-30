@@ -27,7 +27,6 @@ open State
 let mode = Some LEADER
 
 type t = {
-  lock : Lock.t;
   conf : Conf.t;
   logger : Logger.t;
   apply_log : int -> string -> unit;
@@ -35,9 +34,8 @@ type t = {
   mutable should_step_down : bool;
 }
 
-let init ~conf ~lock ~apply_log ~state =
+let init ~conf ~apply_log ~state =
   {
-    lock;
     conf;
     logger = Logger.create conf.node_id mode conf.log_file conf.log_level;
     apply_log;
@@ -223,8 +221,7 @@ let run t () =
       | CLIENT_COMMAND_REQUEST x -> handle_client_command t ~param:x
       | _ -> failwith "Unexpected state" );
   let server, stopper =
-    Request_dispatcher.create (Conf.my_node t.conf).port t.lock t.logger
-      handlers
+    Request_dispatcher.create (Conf.my_node t.conf).port t.logger handlers
   in
   (** Upon election: send initial empty AppendEntries RPCs
    *  (heartbeat) to each server; repeat during idle periods to

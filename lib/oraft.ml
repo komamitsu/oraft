@@ -10,7 +10,6 @@ type t = {
 
 let start conf_file ~apply_log =
   let conf = Conf.from_file conf_file in
-  let lock = Lock.create () in
   let state =
     {
       persistent_state = PersistentState.load conf.state_dir;
@@ -22,10 +21,10 @@ let start conf_file ~apply_log =
     state_exec () >>= fun next ->
     let next_state_exec =
       match next with
-      | FOLLOWER -> Follower.run (Follower.init ~conf ~lock ~apply_log ~state)
+      | FOLLOWER -> Follower.run (Follower.init ~conf ~apply_log ~state)
       | CANDIDATE ->
-          Candidate.run (Candidate.init ~conf ~lock ~apply_log ~state)
-      | LEADER -> Leader.run (Leader.init ~conf ~lock ~apply_log ~state)
+          Candidate.run (Candidate.init ~conf ~apply_log ~state)
+      | LEADER -> Leader.run (Leader.init ~conf ~apply_log ~state)
     in
     process next_state_exec
   in
@@ -61,6 +60,6 @@ let start conf_file ~apply_log =
   {
     conf;
     process =
-      process (Follower.run (Follower.init ~conf ~lock ~apply_log ~state));
+      process (Follower.run (Follower.init ~conf ~apply_log ~state));
     post_command;
   }

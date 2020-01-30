@@ -9,6 +9,5 @@
 
   val create :
     int ->
-    Lock.t ->
     Logger.t ->
     (key, converter * processor) Hashtbl.t -> unit Lwt.t * unit Lwt.u

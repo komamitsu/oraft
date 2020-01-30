@@ -17,7 +17,6 @@ open State
 let mode = Some CANDIDATE
 
 type t = {
-  lock : Lock.t;
   conf : Conf.t;
   logger : Logger.t;
   apply_log : int -> string -> unit;
@@ -25,9 +24,8 @@ type t = {
   mutable next_mode : mode option;
 }
 
-let init ~conf ~lock ~apply_log ~state =
+let init ~conf ~apply_log ~state =
   {
-    lock;
     conf;
     logger = Logger.create conf.node_id mode conf.log_file conf.log_level;
     apply_log;
@@ -38,46 +36,43 @@ let init ~conf ~lock ~apply_log ~state =
 let request_vote t =
   let persistent_state = t.state.persistent_state in
   let persistent_log = t.state.persistent_log in
-  Lock.with_lock t.lock (fun () ->
-      let request_json =
-        let last_log = PersistentLog.last_log persistent_log in
-        let r : Params.request_vote_request =
-          {
-            term = PersistentState.current_term persistent_state;
-            candidate_id = t.conf.node_id;
-            last_log_term = last_log.term;
-            last_log_index = last_log.index;
-          }
-        in
-        Params.request_vote_request_to_yojson r
+    let request_json =
+      let last_log = PersistentLog.last_log persistent_log in
+      let r : Params.request_vote_request =
+        {
+          term = PersistentState.current_term persistent_state;
+          candidate_id = t.conf.node_id;
+          last_log_term = last_log.term;
+          last_log_index = last_log.index;
+        }
       in
-      let request =
-        Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-          ~url_path:"request_vote" ~request_json
-          ~converter:(fun response_json ->
-            match Params.request_vote_response_of_yojson response_json with
-            | Ok param ->
-                (** All Servers:
-                  * - If RPC request or response contains term T > currentTerm:
-                  *   set currentTerm = T, convert to follower (§5.1)
-                  *)
-                if PersistentState.detect_new_leader t.logger persistent_state
-                     param.term
-                then t.next_mode <- Some FOLLOWER;
-                Ok (Params.REQUEST_VOTE_RESPONSE param)
-            | Error _ as err -> err)
-      in
-      Lwt_list.map_p request (Conf.peer_nodes t.conf))
+      Params.request_vote_request_to_yojson r
+    in
+    let request =
+      Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
+        ~url_path:"request_vote" ~request_json
+        ~converter:(fun response_json ->
+          match Params.request_vote_response_of_yojson response_json with
+          | Ok param ->
+              (** All Servers:
+                * - If RPC request or response contains term T > currentTerm:
+                *   set currentTerm = T, convert to follower (§5.1)
+                *)
+              if PersistentState.detect_new_leader t.logger persistent_state
+                   param.term
+              then t.next_mode <- Some FOLLOWER;
+              Ok (Params.REQUEST_VOTE_RESPONSE param)
+          | Error _ as err -> err)
+    in
+    Lwt_list.map_p request (Conf.peer_nodes t.conf)
 
 let run t () =
   let persistent_state = t.state.persistent_state in
   Logger.info t.logger "### Candidate: Start ###";
-  Lock.with_lock t.lock (fun () ->
-      (** Increment currentTerm *)
-      PersistentState.increment_current_term persistent_state;
-      (** Vote for self *)
-      PersistentState.set_voted_for t.logger persistent_state
-        (Some t.conf.node_id));
+  (** Increment currentTerm *)
+  PersistentState.increment_current_term persistent_state;
+  (** Vote for self *)
+  PersistentState.set_voted_for t.logger persistent_state (Some t.conf.node_id);
   State.log t.logger t.state;
   (** Reset election timer *)
   let election_timer = Timer.create t.logger t.conf.election_timeout_millis in
@@ -119,7 +114,7 @@ let run t () =
             ~param:x
       | _ -> failwith "Unexpected state" );
   let server, stopper =
-    Request_dispatcher.create (Conf.my_node t.conf).port t.lock t.logger
+    Request_dispatcher.create (Conf.my_node t.conf).port t.logger
       handlers
   in
   (** Send RequestVote RPCs to all other servers *)
