@@ -13,16 +13,32 @@ let with_flush_stdout f =
   f ();
   Core.Out_channel.flush stdout
 
+let kvs_set args =
+  Hashtbl.replace kvs (List.nth args 0) (List.nth args 1)
+
+let kvs_incr args =
+  let k = List.nth args 0 in
+  let v = match Hashtbl.find_opt kvs k with
+                | Some x -> (
+                  match int_of_string_opt x with
+                  | Some i -> i
+                  | None -> 0
+                )
+                | None -> 0
+  in
+  let incremented = string_of_int (v + 1) in
+  Hashtbl.replace kvs k incremented
+
 let oraft conf_file =
   Oraft.start conf_file ~apply_log:(fun i s ->
       with_flush_stdout (fun () ->
           Printf.printf "<<<<<<<<<<<<<<<< APPLY(%d) : %s >>>>>>>>>>>>>>>>\n" i s);
       let cmd, args = parse_command s in
       match cmd with
-      | "SET" -> Hashtbl.replace kvs (List.nth args 0) (List.nth args 1)
-      | _ ->
-          ();
-          Core.Out_channel.flush Core.Out_channel.stdout)
+      | "SET" -> kvs_set args
+      | "INCR" -> kvs_incr args
+      | _ -> ()
+  )
 
 let server port (oraft : Oraft.t) =
   let callback _conn req body =
@@ -37,8 +53,9 @@ let server port (oraft : Oraft.t) =
           then
             let cmd, args = parse_command request_body in
             match cmd with
-            | "SET" ->
-                Hashtbl.replace kvs (List.nth args 0) (List.nth args 1);
+            | "SET" -> kvs_set args;
+                (`OK, "")
+            | "INCR" -> kvs_incr args;
                 (`OK, "")
             | "GET" -> (
                 match Hashtbl.find_opt kvs (List.nth args 0) with
