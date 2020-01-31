@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
 
-dune exec example/oraft_example.exe 8182 example/oraft-2/conf.json
+script_dir=$(dirname $0)
+
+pushd $script_dir
+dune exec --root ../.. example/oraft_example.exe 8182 conf.json
+popd
+

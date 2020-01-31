@@ -7,9 +7,9 @@
         {"id": 4, "host": "localhost", "port": 7894},
         {"id": 5, "host": "localhost", "port": 7895}
     ],
-    "log_file": "example/oraft-5/oraft.log",
+    "log_file": "oraft.log",
     "log_level": "INFO",
-    "state_dir": "example/oraft-5/state",
+    "state_dir": "state",
     "election_timeout_millis": 5000,
     "heartbeat_interval_millis": 500
 }
