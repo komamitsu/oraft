@@ -25,7 +25,8 @@ let create ~port ~logger
          path
          ( match node_id with
          | Some x -> x
-         | None -> failwith "Missing node_id in HTTP header" ));
+         | None -> failwith "Missing node_id in HTTP header"
+         ));
     match Stdlib.Hashtbl.find_opt table (meth, path) with
     | Some (converter, processor) -> (
         body |> Cohttp_lwt.Body.to_string >>= fun body ->
@@ -34,7 +35,8 @@ let create ~port ~logger
         | Ok param -> processor param
         | Error err ->
             Logger.warn logger (Printf.sprintf "Invalid request: %s" err);
-            Server.respond_string ~status:`Bad_request ~body:"" () )
+            Server.respond_string ~status:`Bad_request ~body:"" ()
+      )
     | None ->
         Logger.debug logger
           (Printf.sprintf "Unknown request: %s %s"

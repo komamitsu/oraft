@@ -17,7 +17,9 @@ let test_persistent_log_append _ =
       assert_equal 0 (PersistentLog.last_log log).term;
       assert_equal 0 (PersistentLog.last_log log).index;
       (* Add a log *)
-      PersistentLog.append log ~term:1 ~start:(PersistentLog.last_index log + 1) ~entries:[ "First" ];
+      PersistentLog.append log ~term:1
+        ~start:(PersistentLog.last_index log + 1)
+        ~entries:[ "First" ];
       let l = PersistentLog.get_exn log 1 in
       assert_equal 1 l.term;
       assert_equal 1 l.index;
@@ -26,7 +28,9 @@ let test_persistent_log_append _ =
       assert_equal 1 (PersistentLog.last_log log).term;
       assert_equal 1 (PersistentLog.last_log log).index;
       (* Add another log *)
-      PersistentLog.append log ~term:2 ~start:(PersistentLog.last_index log + 1) ~entries:[ "Second" ];
+      PersistentLog.append log ~term:2
+        ~start:(PersistentLog.last_index log + 1)
+        ~entries:[ "Second" ];
       let l = PersistentLog.get_exn log 2 in
       assert_equal 2 l.term;
       assert_equal 2 l.index;
@@ -76,9 +80,11 @@ let test_persistent_log_append _ =
       let log = PersistentLog.load ~state_dir:tmpdir in
       assert_all log)
 
+
 let suite =
   "ORaft tests"
   >::: [ "test_persistent_log_append" >:: test_persistent_log_append ]
+
 
 let () =
   Printexc.record_backtrace true;

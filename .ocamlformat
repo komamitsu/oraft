@@ -1,5 +1,11 @@
 margin=160
 profile=conventional
 if-then-else=keyword-first
-comment-check=false
 break-string-literals=never
+let-binding-spacing=sparse
+parens-ite=true
+# disambiguate-non-breaking-match=true
+indicate-multiline-delimiters=closing-on-separate-line
+# stritem-extension-indent=2
+# leading-nested-match-parens=true
+# nested-match=align

@@ -5,6 +5,7 @@ open Core
 module PersistentState = struct
   type state = { mutable current_term : int; mutable voted_for : int option }
   [@@deriving yojson]
+
   (* Just persistent format *)
 
   type t = {
@@ -28,13 +29,16 @@ module PersistentState = struct
               current_term = state.current_term;
               voted_for = state.voted_for;
             }
-        | Error _ -> { path; current_term = 0; voted_for = None } )
+        | Error _ -> { path; current_term = 0; voted_for = None }
+      )
     | _ -> { path; current_term = 0; voted_for = None }
+
 
   let save t =
     let state = { current_term = t.current_term; voted_for = t.voted_for } in
     Out_channel.write_all t.path
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
+
 
   let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
 
@@ -44,9 +48,11 @@ module PersistentState = struct
     t.current_term <- term;
     save t
 
+
   let increment_current_term t =
     t.current_term <- t.current_term + 1;
     save t
+
 
   let detect_new_leader t ~logger ~other_term =
     if other_term > t.current_term
@@ -54,8 +60,10 @@ module PersistentState = struct
       Logger.info logger
         (Printf.sprintf "Detected new leader's term: %d, state.term: %d"
            other_term t.current_term);
-      true )
+      true
+    )
     else false
+
 
   let detect_old_leader t ~logger ~other_term =
     if other_term < t.current_term
@@ -63,8 +71,10 @@ module PersistentState = struct
       Logger.info logger
         (Printf.sprintf "Detected old leader's term: %d, state.term: %d"
            other_term t.current_term);
-      true )
+      true
+    )
     else false
+
 
   let voted_for t = t.voted_for
 
@@ -92,7 +102,8 @@ end
 
 module PersistentLog = struct
   type t = {
-    path : string;  (* Just for convenience *)
+    path : string;
+    (* Just for convenience *)
     mutable last_index : int;
     (* log entries; each entry contains command for state machine,
      * and term when entry was received by leader (first index is 1) *)
@@ -130,11 +141,13 @@ module PersistentLog = struct
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
 
+
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
     Logger.debug logger "PersistentLog : ";
     to_string_list t |> List.iter ~f:(Logger.debug logger)
+
 
   let get t i = List.nth t.list (i - 1)
 
@@ -147,16 +160,18 @@ module PersistentLog = struct
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
+
   let append_to_file t ~log =
     Out_channel.with_file t.path ~append:true ~f:(fun ch ->
         Out_channel.output_lines ch
           [ PersistentLogEntry.to_yojson log |> Yojson.Safe.to_string ])
 
+
   let append t ~term ~start ~entries =
     let rec update_ xs i entries =
       if List.length entries = 0
       then xs
-      else
+      else (
         (* New entry if needed *)
         let entry : PersistentLogEntry.t =
           { term; index = i + 1; data = List.hd_exn entries }
@@ -165,7 +180,7 @@ module PersistentLog = struct
         let current, rest =
           let tl_entries = List.tl_exn entries in
           if i < List.length t.list
-          then
+          then (
             let x = List.nth_exn t.list i in
             (* Raft's log index is 1 origin *)
             if i < start - 1
@@ -173,10 +188,12 @@ module PersistentLog = struct
             else if x.term = term
             then (x, tl_entries)
             else (entry, tl_entries)
+          )
           else (entry, tl_entries)
         in
         if phys_equal current entry then append_to_file t ~log:entry;
         update_ (current :: xs) (i + 1) rest
+      )
     in
     let rev_list = update_ [] 0 entries in
     t.list <- List.rev rev_list
@@ -210,8 +227,10 @@ module VolatileState = struct
       Logger.debug logger
         (Printf.sprintf "Leader commit(%d) is higher than state.term(%d)" other
            t.commit_index);
-      true )
+      true
+    )
     else false
+
 
   let last_applied t = t.last_applied
 
@@ -227,7 +246,7 @@ module VolatileState = struct
         f i;
         update_last_applied t i;
         loop ()
-       )
+      )
     in
     loop ()
 end
@@ -251,6 +270,7 @@ module VolatileStateOnLeader = struct
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
 
+
   let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
 
   let get t i = List.nth_exn t i
@@ -272,6 +292,7 @@ let log t ~logger =
   PersistentState.log t.persistent_state ~logger;
   PersistentLog.log t.persistent_log ~logger;
   VolatileState.log t.volatile_state ~logger
+
 
 type leader = {
   common : common;

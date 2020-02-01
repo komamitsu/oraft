@@ -15,14 +15,17 @@ let handle_response ~logger ~converter ~node ~resp ~body =
     | Error err ->
         Logger.error logger
           (Printf.sprintf
-             "Received an error response from node %d. err:%s, body:%s"
-             node.id err body);
-        None )
+             "Received an error response from node %d. err:%s, body:%s" node.id
+             err body);
+        None
+  )
   else (
     Logger.error logger
-    @@ Printf.sprintf "Received an error status code from node %d : %d"
-         node.id status_code;
-    None )
+    @@ Printf.sprintf "Received an error status code from node %d : %d" node.id
+         status_code;
+    None
+  )
+
 
 let post ~node_id ~logger ~url_path ~request_json
     ~(converter : Yojson.Safe.t -> (Params.response, string) Result.t) node =

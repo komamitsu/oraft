@@ -22,10 +22,13 @@ type t = {
 let init ~conf ~apply_log ~state =
   {
     conf;
-    logger = Logger.create ~node_id:conf.node_id ~mode:mode ~output_path:conf.log_file ~level:conf.log_level;
+    logger =
+      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+        ~level:conf.log_level;
     apply_log;
     state;
   }
+
 
 let request_handlers t ~election_timer =
   let handlers = Stdlib.Hashtbl.create 2 in
@@ -68,13 +71,17 @@ let request_handlers t ~election_timer =
       | _ -> failwith "Unexpected state" );
   handlers
 
+
 let run t () =
   Logger.info t.logger "### Follower: Start ###";
   State.log t.state ~logger:t.logger;
-  let election_timer = Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis in
+  let election_timer =
+    Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
+  in
   let handlers = request_handlers t ~election_timer in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~table:handlers
   in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())

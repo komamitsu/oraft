@@ -27,43 +27,47 @@ type t = {
 let init ~conf ~apply_log ~state =
   {
     conf;
-    logger = Logger.create ~node_id:conf.node_id ~mode:mode ~output_path:conf.log_file ~level:conf.log_level;
+    logger =
+      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+        ~level:conf.log_level;
     apply_log;
     state;
     next_mode = None;
   }
 
+
 let request_vote t =
   let persistent_state = t.state.persistent_state in
   let persistent_log = t.state.persistent_log in
-    let request_json =
-      let last_log = PersistentLog.last_log persistent_log in
-      let r : Params.request_vote_request =
-        {
-          term = PersistentState.current_term persistent_state;
-          candidate_id = t.conf.node_id;
-          last_log_term = last_log.term;
-          last_log_index = last_log.index;
-        }
-      in
-      Params.request_vote_request_to_yojson r
+  let request_json =
+    let last_log = PersistentLog.last_log persistent_log in
+    let r : Params.request_vote_request =
+      {
+        term = PersistentState.current_term persistent_state;
+        candidate_id = t.conf.node_id;
+        last_log_term = last_log.term;
+        last_log_index = last_log.index;
+      }
     in
-    let request =
-      Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-        ~url_path:"request_vote" ~request_json
-        ~converter:(fun response_json ->
-          match Params.request_vote_response_of_yojson response_json with
-          | Ok param ->
-              (** All Servers:
-                * - If RPC request or response contains term T > currentTerm:
-                *   set currentTerm = T, convert to follower (§5.1)
-                *)
-              if PersistentState.detect_new_leader persistent_state ~logger:t.logger ~other_term:param.term
-              then t.next_mode <- Some FOLLOWER;
-              Ok (Params.REQUEST_VOTE_RESPONSE param)
-          | Error _ as err -> err)
-    in
-    Lwt_list.map_p request (Conf.peer_nodes t.conf)
+    Params.request_vote_request_to_yojson r
+  in
+  let request =
+    Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
+      ~url_path:"request_vote" ~request_json ~converter:(fun response_json ->
+        match Params.request_vote_response_of_yojson response_json with
+        | Ok param ->
+            (* All Servers:
+             * - If RPC request or response contains term T > currentTerm:
+             *   set currentTerm = T, convert to follower (§5.1)
+             *)
+            if PersistentState.detect_new_leader persistent_state
+                 ~logger:t.logger ~other_term:param.term
+            then t.next_mode <- Some FOLLOWER;
+            Ok (Params.REQUEST_VOTE_RESPONSE param)
+        | Error _ as err -> err)
+  in
+  Lwt_list.map_p request (Conf.peer_nodes t.conf)
+
 
 let request_handlers t ~election_timer =
   let handlers = Stdlib.Hashtbl.create 2 in
@@ -79,10 +83,10 @@ let request_handlers t ~election_timer =
           Append_entries_handler.handle ~state:t.state ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            (* All Servers:
-             * - If RPC request or response contains term T > currentTerm:
-             *   set currentTerm = T, convert to follower (§5.1) *)
-            (* If AppendEntries RPC received from new leader: convert to follower *)
+              (* All Servers:
+               * - If RPC request or response contains term T > currentTerm:
+               *   set currentTerm = T, convert to follower (§5.1) *)
+              (* If AppendEntries RPC received from new leader: convert to follower *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
@@ -96,14 +100,15 @@ let request_handlers t ~election_timer =
       | REQUEST_VOTE_REQUEST x ->
           Request_vote_handler.handle ~state:t.state ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
-            (* All Servers:
-             * - If RPC request or response contains term T > currentTerm:
-             *   set currentTerm = T, convert to follower (§5.1)
-             *)
+              (* All Servers:
+               * - If RPC request or response contains term T > currentTerm:
+               *   set currentTerm = T, convert to follower (§5.1)
+               *)
             ~cb_new_leader:(fun () -> t.next_mode <- Some FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
   handlers
+
 
 let collect_votes t ~election_timer ~vote_request =
   let received_votes =
@@ -115,7 +120,8 @@ let collect_votes t ~election_timer ~vote_request =
               match param with
               | Params.REQUEST_VOTE_RESPONSE param ->
                   if param.vote_granted then a + 1 else a
-              | _ -> failwith "Unexpected state" )
+              | _ -> failwith "Unexpected state"
+            )
           | None -> a)
         responses
       |> Lwt.return )
@@ -129,27 +135,32 @@ let collect_votes t ~election_timer ~vote_request =
            "Received majority votes (received: %d, majority: %d). Moving to Leader"
            n majority);
       Timer.stop election_timer;
-      t.next_mode <- Some LEADER )
+      t.next_mode <- Some LEADER
+    )
     else (
       Logger.info t.logger
         (Printf.sprintf
            "Didn't receive majority votes (received: %d, majority: %d). Trying again"
            n majority);
-      t.next_mode <- Some CANDIDATE );
+      t.next_mode <- Some CANDIDATE
+    );
     Lwt.return ()
   in
   received_votes
 
-let next_mode t = ( match t.next_mode with
-    | Some LEADER -> LEADER
-    | Some CANDIDATE -> CANDIDATE
-    | Some _ ->
-        Logger.error t.logger "Unexpected state: FOLLOWER";
-        CANDIDATE
-    | _ ->
-        Logger.error t.logger "Unexpected state";
-        (* If election timeout elapses: start new election *)
-        CANDIDATE )
+
+let next_mode t =
+  match t.next_mode with
+  | Some LEADER -> LEADER
+  | Some CANDIDATE -> CANDIDATE
+  | Some _ ->
+      Logger.error t.logger "Unexpected state: FOLLOWER";
+      CANDIDATE
+  | _ ->
+      Logger.error t.logger "Unexpected state";
+      (* If election timeout elapses: start new election *)
+      CANDIDATE
+
 
 let run t () =
   let persistent_state = t.state.persistent_state in
@@ -157,13 +168,17 @@ let run t () =
   (* Increment currentTerm *)
   PersistentState.increment_current_term persistent_state;
   (* Vote for self *)
-  PersistentState.set_voted_for persistent_state ~logger:t.logger ~voted_for:(Some t.conf.node_id);
+  PersistentState.set_voted_for persistent_state ~logger:t.logger
+    ~voted_for:(Some t.conf.node_id);
   State.log t.state ~logger:t.logger;
   (* Reset election timer *)
-  let election_timer = Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis in
+  let election_timer =
+    Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
+  in
   let handlers = request_handlers t ~election_timer in
   let server, stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~table:handlers
   in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request = request_vote t in
