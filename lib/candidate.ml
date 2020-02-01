@@ -111,42 +111,40 @@ let request_handlers t ~election_timer =
 
 
 let collect_votes t ~election_timer ~vote_request =
-  let received_votes =
-    ( vote_request >>= fun responses ->
-      List.fold_left ~init:1 (* Implicitly voting for myself *)
-        ~f:(fun a r ->
-          match r with
-          | Some param -> (
-              match param with
-              | Params.REQUEST_VOTE_RESPONSE param ->
-                  if param.vote_granted then a + 1 else a
-              | _ -> failwith "Unexpected state"
-            )
-          | None -> a)
-        responses
-      |> Lwt.return )
-    >>= fun n ->
-    let majority = Conf.majority_of_nodes t.conf in
-    if n >= majority
-    then (
-      (* If votes received from majority of servers: become leader *)
-      Logger.info t.logger
-        (Printf.sprintf
-           "Received majority votes (received: %d, majority: %d). Moving to Leader"
-           n majority);
-      Timer.stop election_timer;
-      t.next_mode <- Some LEADER
-    )
-    else (
-      Logger.info t.logger
-        (Printf.sprintf
-           "Didn't receive majority votes (received: %d, majority: %d). Trying again"
-           n majority);
-      t.next_mode <- Some CANDIDATE
-    );
-    Lwt.return ()
-  in
-  received_votes
+  ( vote_request >>= fun responses ->
+    List.fold_left ~init:1 (* Implicitly voting for myself *)
+      ~f:(fun a r ->
+        match r with
+        | Some param -> (
+            match param with
+            | Params.REQUEST_VOTE_RESPONSE param ->
+                if param.vote_granted then a + 1 else a
+            | _ -> failwith "Unexpected state"
+          )
+        | None -> a)
+      responses
+    |> Lwt.return )
+  >>= fun n ->
+  let majority = Conf.majority_of_nodes t.conf in
+  if n >= majority
+  then (
+    (* If votes received from majority of servers: become leader *)
+    Logger.info t.logger
+      (Printf.sprintf
+         "Received majority votes (received: %d, majority: %d). Moving to Leader"
+         n majority);
+    Timer.stop election_timer;
+    t.next_mode <- Some LEADER
+  )
+  else (
+    Logger.info t.logger
+      (Printf.sprintf
+         "Didn't receive majority votes (received: %d, majority: %d). Trying again"
+         n majority);
+    Timer.stop election_timer;
+    t.next_mode <- Some CANDIDATE
+  );
+  Lwt.return ()
 
 
 let next_mode t =
