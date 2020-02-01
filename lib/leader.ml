@@ -76,7 +76,7 @@ let prepare_entries t i =
             Logger.error t.logger msg;
             failwith msg)
   in
-  (prev_log_term, prev_log_index, entries)
+  (prev_log_index, prev_log_term, entries)
 
 
 let send_request t i ~request_json ~entries ~prev_log_index =
