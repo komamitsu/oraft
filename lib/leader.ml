@@ -143,7 +143,12 @@ let append_entries t =
          n >= Conf.majority_of_nodes t.conf
     then (
       VolatileState.update_commit_index volatile_state last_log_index;
-      true )
+      VolatileState.apply_logs t.logger volatile_state (fun i ->
+        let log = PersistentLog.get_exn persistent_log i in
+        t.apply_log log.index log.data
+      );
+      true
+    )
     else false )
 
 let heartbeat_span_sec t =

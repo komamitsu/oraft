@@ -215,14 +215,19 @@ module VolatileState = struct
 
   let last_applied t = t.last_applied
 
-  let apply_logs t f =
+  let apply_logs logger t f =
     let rec loop () =
       if t.last_applied < t.commit_index
       then (
         let i = t.last_applied + 1 in
+        Logger.debug logger
+          (Printf.sprintf
+             "Applying %dth entry. state.volatile_state.commit_index: %d" i
+             (commit_index t));
         f i;
         update_last_applied t i;
-        loop () )
+        loop ()
+       )
     in
     loop ()
 end

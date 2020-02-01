@@ -48,20 +48,14 @@ let append_entries ~logger ~state ~(param : Params.append_entries_request)
     PersistentLog.append persistent_log
       (PersistentState.current_term persistent_state)
       (param.prev_log_index + 1) param.entries );
-  (** All Servers:
-    * - If commitIndex > lastApplied: increment lastApplied, apply
-    *   log[lastApplied] to state machine (§5.3)
-    *)
-  VolatileState.apply_logs volatile_state (fun i ->
-      Logger.debug logger
-        (Printf.sprintf
-           "Applying %dth entry. state.volatile_state.commit_index: %d" i
-           (VolatileState.commit_index volatile_state));
+    (** All Servers:
+      * - If commitIndex > lastApplied: increment lastApplied, apply
+      *   log[lastApplied] to state machine (§5.3)
+      *)
+    VolatileState.apply_logs logger volatile_state (fun i ->
       let log = PersistentLog.get_exn persistent_log i in
-      apply_log log.index log.data;
-      Logger.debug logger
-        (Printf.sprintf "Applyed %dth entry: %s" i
-           (PersistentLogEntry.show log)))
+      apply_log log.index log.data
+    )
 
 let handle ~state ~logger ~apply_log ~cb_valid_request ~cb_new_leader
     ~(param : Params.append_entries_request) =

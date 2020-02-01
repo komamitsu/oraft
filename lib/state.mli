@@ -100,7 +100,7 @@ module VolatileState :
 
     val last_applied : t -> int
 
-    val apply_logs : t -> (int -> unit) -> unit
+    val apply_logs : Logger.t -> t -> (int -> unit) -> unit
   end
 
 (** Volatile state on leaders:

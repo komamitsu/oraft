@@ -52,20 +52,14 @@ let server port (oraft : Oraft.t) =
           | "SET" -> (
               oraft.post_command request_body >>= fun result ->
                 Lwt.return (
-                  if result then (
-                    kvs_set args;
-                    (`OK, "")
-                  )
+                  if result then (`OK, "")
                   else (`Internal_server_error, "")
                 )
           )
           | "INCR" -> (
               oraft.post_command request_body >>= fun result ->
                 Lwt.return (
-                  if result then (
-                    kvs_incr args;
-                    (`OK, "")
-                  )
+                  if result then (`OK, "")
                   else (`Internal_server_error, "")
                 )
           )
