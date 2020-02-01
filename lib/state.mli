@@ -10,27 +10,28 @@ module PersistentState :
 
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
 
-    val load : string -> t
+    val load : state_dir:string -> t
 
     val save : t -> unit
 
-    val log : Logger.t -> t -> unit
+    val log : t -> logger:Logger.t -> unit
 
     val current_term : t -> int
 
-    val update_current_term : t -> int -> unit
+    val update_current_term : t -> term:int -> unit
 
     val increment_current_term : t -> unit
 
     val detect_new_leader :
-      Logger.t -> t -> int -> bool
+      t -> logger:Logger.t -> other_term:int -> bool
 
     val detect_old_leader :
-      Logger.t -> t -> int -> bool
+      t -> logger:Logger.t -> other_term:int -> bool
 
     val voted_for : t -> int option
 
-    val set_voted_for : Logger.t -> t -> int option -> unit
+    val set_voted_for :
+      t -> logger:Logger.t -> voted_for:int option -> unit
   end
 
 (** Persistent log state *)
@@ -46,7 +47,7 @@ module PersistentLogEntry :
 
     val from_string : 'a -> 'a
 
-    val log : Logger.t -> t -> unit
+    val log : t -> logger:Logger.t -> unit
   end
 
 module PersistentLog :
@@ -59,11 +60,11 @@ module PersistentLog :
 
     val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
 
-    val load : string -> t
+    val load : state_dir:string -> t
 
     val to_string_list : t -> string list
 
-    val log : Logger.t -> t -> unit
+    val log : t -> logger:Logger.t -> unit
 
     val get : t -> int -> PersistentLogEntry.t option
 
@@ -73,9 +74,9 @@ module PersistentLog :
 
     val last_log : t -> PersistentLogEntry.t
 
-    val append_to_file : t -> PersistentLogEntry.t -> unit
+    val append_to_file : t -> log:PersistentLogEntry.t -> unit
 
-    val append : t -> int -> int -> string list -> unit
+    val append : t -> term:int -> start:int -> entries:string list -> unit
   end
 
 (** Volatile state on all servers *)
@@ -87,7 +88,7 @@ module VolatileState :
 
     val create : unit -> t
 
-    val log : Logger.t -> t -> unit
+    val log : t -> logger:Logger.t -> unit
 
     val update_commit_index : t -> int -> unit
 
@@ -96,11 +97,11 @@ module VolatileState :
     val commit_index : t -> int
 
     val detect_higher_commit_index :
-      Logger.t -> t -> int -> bool
+      t -> logger:Logger.t -> other:int -> bool
 
     val last_applied : t -> int
 
-    val apply_logs : Logger.t -> t -> (int -> unit) -> unit
+    val apply_logs : t -> logger:Logger.t -> f:(int -> unit) -> unit
   end
 
 (** Volatile state on leaders:
@@ -113,9 +114,9 @@ module VolatileStateOnLeader :
 
     val show : t -> string
 
-    val create : int -> int -> peer list
+    val create : n:int -> last_log_index:int -> peer list
 
-    val log : Logger.t -> t -> unit
+    val log : t -> logger:Logger.t -> unit
 
     val get : 'a list -> int -> 'a
 
@@ -132,11 +133,11 @@ type common = {
   volatile_state : VolatileState.t;
 }
 
-val log : Logger.t -> common -> unit
+val log : common -> logger:Logger.t -> unit
 
 type leader = {
   common : common;
   volatile_state_on_leader : VolatileStateOnLeader.t;
 }
 
-val log_leader : Logger.t -> leader -> unit
+val log_leader : leader -> logger:Logger.t -> unit

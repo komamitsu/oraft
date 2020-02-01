@@ -10,10 +10,10 @@ type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 
 type processor = Params.request -> response
 
-let create port logger
-    (table : (key, converter * processor) Stdlib.Hashtbl.t) :
+let create ~port ~logger
+    ~(table : (key, converter * processor) Stdlib.Hashtbl.t) :
     unit Lwt.t * unit Lwt.u =
-  let stop, stopper = Lwt.wait () in
+  let stop, server_stopper = Lwt.wait () in
   let callback _conn req body =
     let meth = req |> Request.meth in
     let path = req |> Request.uri |> Uri.path in
@@ -43,4 +43,4 @@ let create port logger
         Server.respond_string ~status:`Not_found ~body:"" ()
   in
   ( Server.create ~stop ~mode:(`TCP (`Port port)) (Server.make ~callback ()),
-    stopper )
+    server_stopper )

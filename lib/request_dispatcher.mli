@@ -7,7 +7,4 @@
 
   type processor = Params.request -> response
 
-  val create :
-    int ->
-    Logger.t ->
-    (key, converter * processor) Hashtbl.t -> unit Lwt.t * unit Lwt.u
+  val create : port:int -> logger:Logger.t -> table:(key, converter * processor) Hashtbl.t -> unit Lwt.t * unit Lwt.u

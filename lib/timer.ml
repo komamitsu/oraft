@@ -16,7 +16,7 @@ let update t = t.timeout <- Time_ns.add (Time_ns.now ()) (span t.timeout_millis)
 
 let is_timed_out t = Time_ns.( < ) t.timeout (Time_ns.now ())
 
-let start t on_stop =
+let start t ~on_stop =
   let rec check_election_timeout () =
     if is_timed_out t || t.should_stop
     then (
@@ -26,7 +26,7 @@ let start t on_stop =
   in
   check_election_timeout ()
 
-let create logger timeout_millis =
+let create ~logger ~timeout_millis =
   let t =
     {
       timeout_millis;

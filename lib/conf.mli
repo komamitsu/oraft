@@ -18,7 +18,7 @@ val from_file : string -> t
 
 val my_node : t -> Base.node
 
-val peer_node : t -> int -> Base.node
+val peer_node : t -> node_id:int -> Base.node
 
 val peer_nodes : t -> Base.node list
 

@@ -23,7 +23,7 @@ let from_file file : t =
 
 let my_node t = List.find_exn t.nodes ~f:(fun node -> node.id = t.node_id)
 
-let peer_node t node_id =
+let peer_node t ~node_id =
   List.find_exn t.nodes ~f:(fun node -> node.id = node_id)
 
 let peer_nodes t = List.filter t.nodes ~f:(fun node -> node.id <> t.node_id)

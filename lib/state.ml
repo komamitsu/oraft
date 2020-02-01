@@ -1,23 +1,23 @@
 open Core
 
-(** Persistent state on all servers:
+(* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
 module PersistentState = struct
   type state = { mutable current_term : int; mutable voted_for : int option }
   [@@deriving yojson]
-  (** Just persistent format *)
+  (* Just persistent format *)
 
   type t = {
     path : string;
-        (** latest term server has seen (initialized to 0 
-     *  on first boot, increases monotonically) *)
+    (* latest term server has seen (initialized to 0 
+     * on first boot, increases monotonically) *)
     mutable current_term : int;
-        (** candidateId that received vote in current term (or null if none) *)
+    (* candidateId that received vote in current term (or null if none) *)
     mutable voted_for : int option;
   }
   [@@deriving show, yojson]
 
-  let load state_dir =
+  let load ~state_dir =
     let path = Filename.concat state_dir "state.json" in
     match Sys.file_exists path with
     | `Yes -> (
@@ -36,11 +36,11 @@ module PersistentState = struct
     Out_channel.write_all t.path
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
 
-  let log logger t = Logger.debug logger ("PersistentState : " ^ show t)
+  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
 
   let current_term t = t.current_term
 
-  let update_current_term t term =
+  let update_current_term t ~term =
     t.current_term <- term;
     save t
 
@@ -48,7 +48,7 @@ module PersistentState = struct
     t.current_term <- t.current_term + 1;
     save t
 
-  let detect_new_leader logger t other_term =
+  let detect_new_leader t ~logger ~other_term =
     if other_term > t.current_term
     then (
       Logger.info logger
@@ -57,7 +57,7 @@ module PersistentState = struct
       true )
     else false
 
-  let detect_old_leader logger t other_term =
+  let detect_old_leader t ~logger ~other_term =
     if other_term < t.current_term
     then (
       Logger.info logger
@@ -68,7 +68,7 @@ module PersistentState = struct
 
   let voted_for t = t.voted_for
 
-  let set_voted_for logger t voted_for =
+  let set_voted_for t ~logger ~voted_for =
     let to_string = function
       | Some x -> "Some " ^ string_of_int x
       | None -> "None"
@@ -79,7 +79,7 @@ module PersistentState = struct
     t.voted_for <- voted_for
 end
 
-(** Persistent log state *)
+(* Persistent log state *)
 module PersistentLogEntry = struct
   type t = { term : int; index : int; data : string } [@@deriving show, yojson]
 
@@ -87,20 +87,20 @@ module PersistentLogEntry = struct
 
   let from_string s = s
 
-  let log logger t = Logger.debug logger ("PersistentLogEntry : " ^ show t)
+  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ show t)
 end
 
 module PersistentLog = struct
   type t = {
-    path : string;  (** Just for convenience *)
+    path : string;  (* Just for convenience *)
     mutable last_index : int;
-        (** log entries; each entry contains command for state machine,
-     *  and term when entry was received by leader (first index is 1) *)
+    (* log entries; each entry contains command for state machine,
+     * and term when entry was received by leader (first index is 1) *)
     mutable list : PersistentLogEntry.t list;
   }
   [@@deriving show, yojson]
 
-  let load state_dir =
+  let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
     match Sys.file_exists path with
     | `Yes ->
@@ -132,13 +132,13 @@ module PersistentLog = struct
 
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
-  let log logger t =
+  let log t ~logger =
     Logger.debug logger "PersistentLog : ";
     to_string_list t |> List.iter ~f:(Logger.debug logger)
 
-  let get t index = List.nth t.list (index - 1)
+  let get t i = List.nth t.list (i - 1)
 
-  let get_exn t index = List.nth_exn t.list (index - 1)
+  let get_exn t i = List.nth_exn t.list (i - 1)
 
   let last_index t = t.last_index
 
@@ -147,12 +147,12 @@ module PersistentLog = struct
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
-  let append_to_file t log =
+  let append_to_file t ~log =
     Out_channel.with_file t.path ~append:true ~f:(fun ch ->
         Out_channel.output_lines ch
           [ PersistentLogEntry.to_yojson log |> Yojson.Safe.to_string ])
 
-  let append t term start entries =
+  let append t ~term ~start ~entries =
     let rec update_ xs i entries =
       if List.length entries = 0
       then xs
@@ -175,28 +175,28 @@ module PersistentLog = struct
             else (entry, tl_entries)
           else (entry, tl_entries)
         in
-        if phys_equal current entry then append_to_file t entry;
+        if phys_equal current entry then append_to_file t ~log:entry;
         update_ (current :: xs) (i + 1) rest
     in
     let rev_list = update_ [] 0 entries in
     t.list <- List.rev rev_list
 end
 
-(** Volatile state on all servers *)
+(* Volatile state on all servers *)
 module VolatileState = struct
   type t = {
-    (** index of highest log entry known to be
-     *  committed (initialized to 0, increases monotonically) *)
+    (* index of highest log entry known to be
+     * committed (initialized to 0, increases monotonically) *)
     mutable commit_index : int;
-        (** index of highest log entry applied to state
-     *  machine (initialized to 0, increases monotonically) *)
+    (* index of highest log entry applied to state
+     * machine (initialized to 0, increases monotonically) *)
     mutable last_applied : int;
   }
   [@@deriving show]
 
   let create () = { commit_index = 0; last_applied = 0 }
 
-  let log logger t = Logger.debug logger ("VolatileState: " ^ show t)
+  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
 
   let update_commit_index t i = t.commit_index <- i
 
@@ -204,7 +204,7 @@ module VolatileState = struct
 
   let commit_index t = t.commit_index
 
-  let detect_higher_commit_index logger t other =
+  let detect_higher_commit_index t ~logger ~other =
     if other > t.commit_index
     then (
       Logger.debug logger
@@ -215,7 +215,7 @@ module VolatileState = struct
 
   let last_applied t = t.last_applied
 
-  let apply_logs logger t f =
+  let apply_logs t ~logger ~f =
     let rec loop () =
       if t.last_applied < t.commit_index
       then (
@@ -232,26 +232,26 @@ module VolatileState = struct
     loop ()
 end
 
-(** Volatile state on leaders:
-  * (Reinitialized after election) *)
+(* Volatile state on leaders:
+ * (Reinitialized after election) *)
 module VolatileStateOnLeader = struct
   type peer = {
-    (** for each server, index of the next log entry to send
-     *  to that server (initialized to leader last log index + 1) *)
+    (* for each server, index of the next log entry to send
+     * to that server (initialized to leader last log index + 1) *)
     mutable next_index : int;
-        (** for each server, index of highest log entry known to be replicated on server
-     *  (initialized to 0, increases monotonically) *)
+    (* for each server, index of highest log entry known to be replicated on server
+     * (initialized to 0, increases monotonically) *)
     mutable match_index : int;
   }
   [@@deriving show]
 
   type t = peer list [@@deriving show]
 
-  let create n last_log_index =
+  let create ~n ~last_log_index =
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
 
-  let log logger t = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
+  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
 
   let get t i = List.nth_exn t i
 
@@ -268,16 +268,16 @@ type common = {
   volatile_state : VolatileState.t;
 }
 
-let log logger t =
-  PersistentState.log logger t.persistent_state;
-  PersistentLog.log logger t.persistent_log;
-  VolatileState.log logger t.volatile_state
+let log t ~logger =
+  PersistentState.log t.persistent_state ~logger;
+  PersistentLog.log t.persistent_log ~logger;
+  VolatileState.log t.volatile_state ~logger
 
 type leader = {
   common : common;
   volatile_state_on_leader : VolatileStateOnLeader.t;
 }
 
-let log_leader logger t =
-  log logger t.common;
-  VolatileStateOnLeader.log logger t.volatile_state_on_leader
+let log_leader t ~logger =
+  log t.common ~logger;
+  VolatileStateOnLeader.log t.volatile_state_on_leader ~logger

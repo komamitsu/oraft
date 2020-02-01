@@ -30,7 +30,7 @@ let kvs_incr args =
   Hashtbl.replace kvs k incremented
 
 let oraft conf_file =
-  Oraft.start conf_file ~apply_log:(fun i s ->
+  Oraft.start ~conf_file ~apply_log:(fun i s ->
       with_flush_stdout (fun () ->
           Printf.printf "<<<<<<<<<<<<<<<< APPLY(%d) : %s >>>>>>>>>>>>>>>>\n" i s);
       let cmd, args = parse_command s in
