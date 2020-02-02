@@ -1,6 +1,6 @@
 # ORaft
 
-OCaml implementation of [Raft consensus algorithm](https://raft.github.io/raft.pdf)
+Library of [Raft consensus algorithm](https://raft.github.io/raft.pdf) implemented in OCaml 
 
 <img src="https://raw.githubusercontent.com/wiki/komamitsu/oraft/images/oraft-demo.gif" alt="oraft-demo" width="640"/>
 
