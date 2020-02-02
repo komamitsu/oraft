@@ -56,7 +56,13 @@ $ ./example/run_all.sh
 And then, you can send a request using `curl` command or something
 
 ```
-$ curl -X POST --data-binary 'SET c hello' http://localhost:8185/command
-$ curl -X POST --data-binary 'GET c' http://localhost:8183/command
+$ curl -X POST --data-binary 'SET a hello' http://localhost:8181/command
+$ curl -X POST --data-binary 'GET a' http://localhost:8182/command
 hello
+$ curl -X POST --data-binary 'SET b 42' http://localhost:8183/command
+$ curl -X POST --data-binary 'GET b' http://localhost:8184/command
+42
+$ curl -X POST --data-binary 'INCR b' http://localhost:8185/command
+$ curl -X POST --data-binary 'GET b' http://localhost:8181/command
+43
 ```
