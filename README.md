@@ -45,7 +45,7 @@ $ dune runtest
 
 ## Example
 
-This project contains `example` directory. You can execute the project like this:
+This project contains `example` project that is a simple KVS. You can execute the project like this:
 
 ```
 $ ./example/run_all.sh
