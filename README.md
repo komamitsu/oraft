@@ -2,6 +2,7 @@
 
 OCaml implementation of [Raft consensus algorithm](https://raft.github.io/raft.pdf)
 
+<img src="https://raw.githubusercontent.com/wiki/komamitsu/oraft/images/oraft-demo.gif" alt="oraft-demo" width="640"/>
 
 ## Current Status
 
