@@ -90,8 +90,10 @@ let send_request t i ~request_json ~entries ~prev_log_index =
       match Params.append_entries_response_of_yojson response_json with
       | Ok param when param.success ->
           (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
+          VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
+            (prev_log_index + List.length entries);
           VolatileStateOnLeader.set_next_index leader_state i
-            (prev_log_index + List.length entries + 1);
+            (VolatileStateOnLeader.match_index leader_state i + 1);
           (* All Servers:
            * - If RPC request or response contains term T > currentTerm:
            *   set currentTerm = T, convert to follower (§5.1)
