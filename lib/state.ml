@@ -1,4 +1,5 @@
 open Core
+open Printf
 
 (* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
@@ -58,7 +59,7 @@ module PersistentState = struct
     if other_term > t.current_term
     then (
       Logger.info logger
-        (Printf.sprintf "Detected new leader's term: %d, state.term: %d"
+        (sprintf "Detected new leader's term: %d, state.term: %d"
            other_term t.current_term);
       true
     )
@@ -69,7 +70,7 @@ module PersistentState = struct
     if other_term < t.current_term
     then (
       Logger.info logger
-        (Printf.sprintf "Detected old leader's term: %d, state.term: %d"
+        (sprintf "Detected old leader's term: %d, state.term: %d"
            other_term t.current_term);
       true
     )
@@ -84,7 +85,7 @@ module PersistentState = struct
       | None -> "None"
     in
     Logger.info logger
-      (Printf.sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
+      (sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
          (to_string voted_for));
     t.voted_for <- voted_for
 end
@@ -129,13 +130,13 @@ module PersistentLog = struct
                   if log.index < !cur
                   then
                     failwith
-                      (Printf.sprintf
+                      (sprintf
                          "Unexpected lower index in logs. cur:%d, log:%s" !cur
                          (PersistentLogEntry.show log));
                   cur := log.index;
                   log
               | Error err ->
-                  failwith (Printf.sprintf "Failed to parse JSON: %s" err))
+                  failwith (sprintf "Failed to parse JSON: %s" err))
             lines
         in
         { path; last_index = !cur; list = logs }
@@ -225,7 +226,7 @@ module VolatileState = struct
     if other > t.commit_index
     then (
       Logger.debug logger
-        (Printf.sprintf "Leader commit(%d) is higher than state.term(%d)" other
+        (sprintf "Leader commit(%d) is higher than state.term(%d)" other
            t.commit_index);
       true
     )
@@ -240,7 +241,7 @@ module VolatileState = struct
       then (
         let i = t.last_applied + 1 in
         Logger.debug logger
-          (Printf.sprintf
+          (sprintf
              "Applying %dth entry. state.volatile_state.commit_index: %d" i
              (commit_index t));
         f i;
@@ -277,9 +278,20 @@ module VolatileStateOnLeader = struct
 
   let set_next_index t i x = (List.nth_exn t i).next_index <- x
 
+  let set_match_index t ~logger i x =
+    let peer = List.nth_exn t i in
+    if peer.match_index > x then
+      Logger.warn logger (sprintf "matchIndex should monotonically increase within a \
+                              term, since servers don't forget entries. But it didn't. \
+                              match_index: old=%d, new=%d" peer.match_index x)
+    else
+      peer.match_index <- x
+
   let show_nth_peer t i = get t i |> show_peer
 
   let next_index t i = (get t i).next_index
+
+  let match_index t i = (get t i).match_index
 end
 
 type common = {

@@ -122,9 +122,13 @@ module VolatileStateOnLeader :
 
     val set_next_index : peer list -> int -> int -> unit
 
+    val set_match_index : peer list -> logger:Logger.t -> int -> int -> unit
+
     val show_nth_peer : t -> int -> string 
 
     val next_index : t -> int -> int
+
+    val match_index : t -> int -> int
   end
 
 type common = {
