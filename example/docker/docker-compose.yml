@@ -1,0 +1,39 @@
+version: '3'
+
+networks:
+  oraft-net:
+    ipam:
+      config:
+        - subnet: 172.42.0.0/24
+
+services:
+  oraft-1:
+    build: .
+    ports:
+    - "7891:7891"
+    volumes:
+    - ../..:/oraft
+    - ./oraft-1:/workspace
+    networks:
+      oraft-net:
+        ipv4_address: 172.42.0.11
+  oraft-2:
+    build: .
+    ports:
+    - "7891:7891"
+    volumes:
+    - ../..:/oraft
+    - ./oraft-2:/workspace
+    networks:
+      oraft-net:
+        ipv4_address: 172.42.0.12
+  oraft-3:
+    build: .
+    ports:
+    - "7891:7891"
+    volumes:
+    - ../..:/oraft
+    - ./oraft-3:/workspace
+    networks:
+      oraft-net:
+        ipv4_address: 172.42.0.13
