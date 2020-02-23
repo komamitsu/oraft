@@ -1,5 +1,5 @@
 {
-    "node_id": 3,
+    "node_id": 5,
     "nodes": [
         {"id": 1, "host": "oraft-1", "port": 7891},
         {"id": 2, "host": "oraft-2", "port": 7891},
