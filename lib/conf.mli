@@ -6,6 +6,7 @@ type t = {
   log_level : string;
   election_timeout_millis : int;
   heartbeat_interval_millis : int;
+  request_timeout_millis : int;
 }
 
 val show : t -> string

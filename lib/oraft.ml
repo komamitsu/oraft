@@ -37,7 +37,8 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   in
   let request =
     Request_sender.post ~node_id:conf.node_id ~logger ~url_path:"client_command"
-      ~request_json ~converter:(fun response_json ->
+      ~request_json ~timeout_millis:conf.request_timeout_millis
+      ~converter:(fun response_json ->
         match Params.client_command_response_of_yojson response_json with
         | Ok param -> Ok (Params.CLIENT_COMMAND_RESPONSE param)
         | Error _ as err -> err)

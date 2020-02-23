@@ -7,5 +7,6 @@ RUN opam switch create 4.09.0 ocaml-base-compiler.4.09.0
 RUN opam install -y dune cohttp-lwt-unix core ppx_deriving ppx_deriving_yojson yojson fileutils
 RUN opam install -y oUnit
 RUN apt install -y tzdata netbase
+RUN apt install -y net-tools tcpdump
 WORKDIR /workspace
 CMD opam exec -- dune exec --root /oraft example/oraft_example.exe 8181 conf.json
