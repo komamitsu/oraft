@@ -1,0 +1,12 @@
+GEM
+  specs:
+    parallel (1.12.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  parallel
+
+BUNDLED WITH
+   1.15.1
