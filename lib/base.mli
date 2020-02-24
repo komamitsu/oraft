@@ -1,8 +1,10 @@
 type mode = FOLLOWER | CANDIDATE | LEADER
 
+val pp_mode : Format.formatter -> mode -> unit
+
 val show_mode : mode -> string
 
-type node = { id : int; host : string; port : int; }
+type node = { id : int; host : string; port : int; app_port : int; }
 
 val pp_node : Format.formatter -> node -> unit
 

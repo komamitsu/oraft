@@ -1,11 +1,11 @@
 {
     "node_id": 5,
     "nodes": [
-        {"id": 1, "host": "localhost", "port": 7891},
-        {"id": 2, "host": "localhost", "port": 7892},
-        {"id": 3, "host": "localhost", "port": 7893},
-        {"id": 4, "host": "localhost", "port": 7894},
-        {"id": 5, "host": "localhost", "port": 7895}
+        {"id": 1, "host": "localhost", "port": 7891, "app_port": 8181},
+        {"id": 2, "host": "localhost", "port": 7892, "app_port": 8182},
+        {"id": 3, "host": "localhost", "port": 7893, "app_port": 8183},
+        {"id": 4, "host": "localhost", "port": 7894, "app_port": 8184},
+        {"id": 5, "host": "localhost", "port": 7895, "app_port": 8185}
     ],
     "log_file": "oraft.log",
     "log_level": "INFO",

@@ -209,10 +209,12 @@ module VolatileState = struct
     (* index of highest log entry applied to state
      * machine (initialized to 0, increases monotonically) *)
     mutable last_applied : int;
+    (* This isn't shown in the paper *)
+    mutable mode : Base.mode;
   }
   [@@deriving show]
 
-  let create () = { commit_index = 0; last_applied = 0 }
+  let create () = { commit_index = 0; last_applied = 0; mode = FOLLOWER }
 
   let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
 
@@ -250,6 +252,13 @@ module VolatileState = struct
       )
     in
     loop ()
+
+  let mode t = t.mode
+
+  let update_mode t ~logger mode =
+    t.mode <- mode;
+    Logger.info logger
+      (sprintf "Mode is changed to %s" (Base.show_mode mode))
 end
 
 (* Volatile state on leaders:
