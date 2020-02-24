@@ -86,7 +86,8 @@ let send_request t i ~request_json ~entries ~prev_log_index =
     (Printf.sprintf "Sending append_entries: %s"
        (Yojson.Safe.to_string request_json));
   Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-    ~url_path:"append_entries" ~request_json ~converter:(fun response_json ->
+    ~url_path:"append_entries" ~request_json ~timeout_millis:t.conf.request_timeout_millis
+    ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
       | Ok param when param.success ->
           (* If successful: update nextIndex and matchIndex for follower (§5.3) *)

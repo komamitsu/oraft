@@ -53,7 +53,8 @@ let request_vote t =
   in
   let request =
     Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-      ~url_path:"request_vote" ~request_json ~converter:(fun response_json ->
+      ~url_path:"request_vote" ~request_json ~timeout_millis:t.conf.request_timeout_millis
+      ~converter:(fun response_json ->
         match Params.request_vote_response_of_yojson response_json with
         | Ok param ->
             (* All Servers:

@@ -26,8 +26,7 @@ let handle_response ~logger ~converter ~node ~resp ~body =
     None
   )
 
-
-let post ~node_id ~logger ~url_path ~request_json
+let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
     ~(converter : Yojson.Safe.t -> (Params.response, string) Result.t) node =
   let request_param =
     request_json |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
@@ -35,6 +34,12 @@ let post ~node_id ~logger ~url_path ~request_json
   let headers =
     Cohttp.Header.init_with "X-Raft-Node-Id" (string_of_int node_id)
   in
+  let timeout: Params.response option Lwt.t =
+    Lwt_unix.sleep ((float_of_int timeout_millis) /. 1000.0) >>= fun () -> (
+      Logger.warn logger
+        (Printf.sprintf "Request timeout. node_id: %d" node.id);
+      Lwt.return None
+    ) in
   let send_req node =
     Client.post ~body:request_param ~headers
       (Uri.of_string
@@ -50,7 +55,7 @@ let post ~node_id ~logger ~url_path ~request_json
       None
   in
   Lwt.catch
-    (fun () -> send_req node)
+    (fun () -> Lwt.pick [send_req node; timeout])
     (fun e ->
       let msg = Stdlib.Printexc.to_string e in
       Logger.error logger
