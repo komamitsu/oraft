@@ -86,7 +86,11 @@ let main =
 
 ## Example
 
-This repo contains `example` project that is a simple KVS. You can execute the project like this:
+This repo contains `example` project that is a simple KVS.
+
+### Run a cluster on multi processes
+
+You can execute the project like this:
 
 ```
 $ ./example/run_all.sh
@@ -108,3 +112,14 @@ $ curl -X POST --data-binary 'INCR b' http://localhost:8185/command
 $ curl -X POST --data-binary 'GET b' http://localhost:8181/command
 43
 ```
+
+### Run a cluster on Docker containers
+
+You can execute the project with Docker containers:
+
+```
+$ ./example/docker/run_cluster.sh
+```
+
+5 Docker containers run the Raft application will start.
+
