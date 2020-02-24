@@ -36,7 +36,7 @@ let kvs_cas args =
   match Hashtbl.find_opt kvs k with
   | Some x when x = expected -> Hashtbl.replace kvs k v
   | Some x -> with_flush_stdout (fun () ->
-          Printf.printf "!!!! INVALID CAS : k=%s, expected=%s, v=%s !!!!n" k expected x)
+          Printf.printf "!!!! INVALID CAS : k=%s, expected=%s, v=%s !!!!\n" k expected x)
   | None -> ()
 
 let oraft conf_file =
@@ -51,6 +51,21 @@ let oraft conf_file =
       | _ -> ()
       )
 
+let redirect_to_leader leader_host port body =
+  Client.post ~body:(Cohttp_lwt.Body.of_string body)
+      (Uri.of_string
+         (Printf.sprintf "http://%s:%d/command" leader_host port))
+      >>= fun (resp, body) ->
+        body |> Cohttp_lwt.Body.to_string >|= fun body ->
+          let status_code = resp |> Response.status in
+          (status_code, body)
+
+let handle_or_proxy (oraft:Oraft.t) body f =
+  let state = oraft.current_state () in
+  match (state.mode, state.leader) with
+  | (LEADER, _) -> f ()
+  | (_, Some node) -> redirect_to_leader node.host node.port body
+  | _ -> Lwt.return (`Internal_server_error, "")
 
 let server port (oraft : Oraft.t) =
   let callback _conn req body =
@@ -69,10 +84,11 @@ let server port (oraft : Oraft.t) =
               oraft.post_command request_body >>= fun result ->
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
-          | "CAS" -> (
+          | "CAS" ->
+            handle_or_proxy oraft request_body (fun () ->
               let k = List.nth args 0 in
               let expected = List.nth args 1 in
-              match Hashtbl.find_opt kvs k  with
+              match Hashtbl.find_opt kvs k with
               | Some x when x = expected -> (
                 oraft.post_command request_body >>= fun result ->
                 Lwt.return
@@ -80,13 +96,15 @@ let server port (oraft : Oraft.t) =
               )
               | Some _ -> Lwt.return (`Conflict, "")
               | None -> Lwt.return (`Not_found, "")
-          )
+            )
           | "GET" ->
-              Lwt.return
-                ( match Hashtbl.find_opt kvs (List.nth args 0) with
+            handle_or_proxy oraft request_body (fun () ->
+              let k = List.nth args 0 in
+              Lwt.return (match Hashtbl.find_opt kvs k with
                 | Some x -> (`OK, x)
                 | None -> (`Not_found, "")
-                )
+              )
+            )
           | _ -> Lwt.return (`Bad_request, "") )
         >>= fun (status_code, response_body) ->
         Server.respond_string ~status:status_code ~body:response_body ()

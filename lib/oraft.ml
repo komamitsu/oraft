@@ -2,10 +2,21 @@ open Lwt
 open Base
 open State
 
+type leader_node = {
+  host : string; port : int;
+}
+
+type current_state = {
+  mode : mode;
+  term : int;
+  leader : leader_node option;
+}
+
 type t = {
   conf : Conf.t;
   process : unit Lwt.t;
   post_command : string -> bool Lwt.t;
+  current_state : unit -> current_state;
 }
 
 let state (conf : Conf.t) =
@@ -16,10 +27,11 @@ let state (conf : Conf.t) =
   }
 
 
-let process ~conf ~apply_log ~state ~state_exec : unit Lwt.t =
+let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
   let rec loop state_exec =
     state_exec () >>= fun next ->
     let next_state_exec =
+      VolatileState.update_mode state.volatile_state ~logger next;
       match next with
       | FOLLOWER -> Follower.run (Follower.init ~conf ~apply_log ~state)
       | CANDIDATE -> Candidate.run (Candidate.init ~conf ~apply_log ~state)
@@ -71,6 +83,17 @@ let start ~conf_file ~apply_log =
   in
   {
     conf;
-    process = process ~conf ~apply_log ~state ~state_exec:initial_state_exec;
+    process = process ~conf ~logger ~apply_log ~state
+                ~state_exec:initial_state_exec;
     post_command;
+    current_state = fun () ->
+      let mode = VolatileState.mode state.volatile_state in
+      let term = PersistentState.current_term state.persistent_state in
+      let leader = match PersistentState.voted_for state.persistent_state with
+      | Some x -> 
+          let leader = Conf.peer_node conf ~node_id:x in
+          Some { host = leader.host; port = leader.app_port; }
+      | None -> None
+      in
+      { mode; term; leader }
   }
