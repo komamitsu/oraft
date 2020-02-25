@@ -29,7 +29,7 @@ let mode = Some LEADER
 type t = {
   conf : Conf.t;
   logger : Logger.t;
-  apply_log : int -> string -> unit;
+  apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
 }
@@ -168,7 +168,7 @@ let append_entries t =
       VolatileState.update_commit_index volatile_state last_log_index;
       VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
           let log = PersistentLog.get_exn persistent_log i in
-          t.apply_log log.index log.data);
+          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data);
       true
     )
     else false
@@ -216,7 +216,8 @@ let request_handlers t =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~state:t.state.common ~logger:t.logger
+          Append_entries_handler.handle ~conf:t.conf 
+            ~state:t.state.common ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
               (* All Servers:

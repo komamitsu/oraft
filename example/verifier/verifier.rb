@@ -2,20 +2,21 @@ require 'parallel'
 require 'faraday'
 
 class Verifier
-  def initialize(concurrency, keys, count)
+  def initialize(concurrency, key_size, count)
     @concurrency = concurrency
-    @keys = keys
+    @key_size = key_size
     @count = count
     @uris = 1.upto(5).map do |i|
       "http://localhost:818#{i}/command"
     end
+    @table = {}
   end
 
-  def send_command(command)
+  def send_command(command, uri = nil)
     10.times.each do
-      uri = @uris[Random.rand(5)]
+      uri ||= @uris[Random.rand(5)]
 
-      puts "uri=#{uri}, command='#{command}'"
+      # puts "uri=#{uri}, command='#{command}'"
 
       begin
         response = Faraday.post(uri, command)
@@ -27,7 +28,7 @@ class Verifier
       when 0...200
         raise "Unexpected response: response=#{response}, command='#{command}'"
       when 200...300
-        puts "Success! command='#{command}'"
+        # puts "Success! command='#{command}'"
         return response.body
       when 400
         raise "Bad Request: command='#{command}'"
@@ -48,19 +49,19 @@ class Verifier
   end
 
   def key(i)
-    "key-#{i % @keys}"
+    "key-#{i % @key_size}"
   end
 
-  def value(x)
-    "#{x}"
-  end
-
-  def run
-    @keys.times.each do |i|
-      send_command("SET #{key(i)} #{value(i * 1000)}")
+  def initialize_values
+    @key_size.times.each do |i|
+      k = key(i)
+      send_command("SET #{k} 0")
+      @table[k] = 0
     end
+  end
 
-    Parallel.each(1..@count, :in_threads => @concurrency) do |i|
+  def update_values
+    Parallel.each(0...@count, :in_threads => @concurrency) do |i|
       retry_count = 0
       loop do
         if retry_count >= 10
@@ -69,18 +70,56 @@ class Verifier
 
         k = key(i)
         v = send_command("GET #{k}")
-        next_v = Integer(v) + 1
-        if send_command("CAS #{k} #{v} #{next_v}")
+        diff = Random.rand(1000)
+        next_v = Integer(v) + diff
+
+        if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
+          @table[k] += diff
           break
         end
+
         sleep 0.1
         retry_count += 1
       end
     end
   end
+
+  def verify_values
+    failed = 0
+    @key_size.times.each do |i|
+      k = key(i)
+      expected = @table[k]
+      @uris.each do |uri|
+        v = Integer(send_command("GET #{k}", uri))
+        if v == expected
+          puts "Success: expected=#{expected}, actual=#{v}"
+        else
+          puts "Failed:  expected=#{expected}, actual=#{v}"
+          failed += 1
+        end
+      end
+      puts "--------------------------------------------------------------------------------"
+    end
+
+    puts
+    if failed == 0
+      puts "All good"
+    else
+      puts "Detected any failure: failed_count=#{failed}"
+    end
+    puts
+  end
+
+  def run
+    initialize_values
+
+    update_values
+
+    verify_values
+  end
 end
 
 if $0 == __FILE__
-  Verifier.new(4, 3, 10).run
+  Verifier.new(4, 8, 128).run
 end
 

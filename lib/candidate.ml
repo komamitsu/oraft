@@ -19,7 +19,7 @@ let mode = Some CANDIDATE
 type t = {
   conf : Conf.t;
   logger : Logger.t;
-  apply_log : int -> string -> unit;
+  apply_log : apply_log;
   state : State.common;
   mutable next_mode : mode option;
 }
@@ -81,7 +81,8 @@ let request_handlers t ~election_timer =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~state:t.state ~logger:t.logger
+          Append_entries_handler.handle ~conf:t.conf
+            ~state:t.state ~logger:t.logger
             ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
               (* All Servers:
