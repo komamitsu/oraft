@@ -13,9 +13,10 @@
  *    min(leaderCommit, index of last new entry)
  *)
 val handle :
+  conf: Conf.t ->
   state:State.common ->
   logger:Logger.t ->
-  apply_log:(int -> string -> unit) ->
+  apply_log:Base.apply_log ->
   cb_valid_request:(unit -> unit) ->
   cb_new_leader:(unit -> unit) ->
   param:Params.append_entries_request ->

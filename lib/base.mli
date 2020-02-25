@@ -16,3 +16,6 @@ val node_of_yojson :
   Yojson.Safe.t -> node Ppx_deriving_yojson_runtime.error_or
 
 val node_of_yojson_exn : Yojson.Safe.t -> node
+
+type apply_log = node_id:int -> log_index:int -> log_data:string -> unit
+

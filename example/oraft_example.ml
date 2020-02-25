@@ -40,10 +40,11 @@ let kvs_cas args =
   | None -> ()
 
 let oraft conf_file =
-  Oraft.start ~conf_file ~apply_log:(fun i s ->
+  Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
       with_flush_stdout (fun () ->
-          Printf.printf "<<<<<<<<<<<<<<<< APPLY(%d) : %s >>>>>>>>>>>>>>>>\n" i s);
-      let cmd, args = parse_command s in
+          Printf.printf
+            "<<<< %d: APPLY(%d) : %s >>>>\n" node_id log_index log_data);
+      let cmd, args = parse_command log_data in
       match cmd with
       | "SET" -> kvs_set args
       | "INCR" -> kvs_incr args
