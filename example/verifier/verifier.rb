@@ -12,8 +12,13 @@ class Verifier
     @table = {}
   end
 
+  def wait(init_wait, retry_factor, max_wait, retry_count)
+    # Add plus/minus 10% jitter
+    sleep([init_wait * (retry_factor ** retry_count), max_wait].min * (1.1 - Random.rand(0.2)))
+  end
+
   def send_command(command, uri = nil)
-    10.times.each do
+    10.times.each do |i|
       uri ||= @uris[Random.rand(5)]
 
       # puts "uri=#{uri}, command='#{command}'"
@@ -21,6 +26,7 @@ class Verifier
       begin
         response = Faraday.post(uri, command)
       rescue Faraday::ConnectionFailed
+        wait(0.1, 2, 1.5, i)
         next
       end
 
@@ -40,7 +46,7 @@ class Verifier
         return nil
       else # >= 500
         puts "Temporary error: command='#{command}'"
-        sleep 0.1
+        wait(0.1, 2, 1.5, i)
         next
       end
     end
@@ -78,7 +84,7 @@ class Verifier
           break
         end
 
-        sleep 0.1
+        wait(0.1, 2, 1.5, retry_count)
         retry_count += 1
       end
     end
@@ -120,6 +126,6 @@ class Verifier
 end
 
 if $0 == __FILE__
-  Verifier.new(4, 8, 128).run
+  Verifier.new(16, 8, 256).run
 end
 
