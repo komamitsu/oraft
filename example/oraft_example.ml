@@ -3,6 +3,8 @@ open Cohttp_lwt_unix
 
 let kvs = Hashtbl.create 64
 
+let lock = Lwt_mutex.create ()
+
 let parse_command s =
   let parts = Core.String.split ~on:' ' s in
   let cmd = List.hd parts in
@@ -86,17 +88,19 @@ let server port (oraft : Oraft.t) =
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
           | "CAS" ->
-            handle_or_proxy oraft request_body (fun () ->
-              let k = List.nth args 0 in
-              let expected = List.nth args 1 in
-              match Hashtbl.find_opt kvs k with
-              | Some x when x = expected -> (
-                oraft.post_command request_body >>= fun result ->
-                Lwt.return
-                  (if result then (`OK, "") else (`Internal_server_error, ""))
+            Lwt_mutex.with_lock lock (fun () ->
+              handle_or_proxy oraft request_body (fun () ->
+                let k = List.nth args 0 in
+                let expected = List.nth args 1 in
+                match Hashtbl.find_opt kvs k with
+                | Some x when x = expected -> (
+                  oraft.post_command request_body >>= fun result ->
+                  Lwt.return
+                    (if result then (`OK, "") else (`Internal_server_error, ""))
+                )
+                | Some _ -> Lwt.return (`Conflict, "")
+                | None -> Lwt.return (`Not_found, "")
               )
-              | Some _ -> Lwt.return (`Conflict, "")
-              | None -> Lwt.return (`Not_found, "")
             )
           | "GET" ->
             handle_or_proxy oraft request_body (fun () ->
