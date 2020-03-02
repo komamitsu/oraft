@@ -34,6 +34,7 @@ type t = {
   apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
+  mutable last_request_ts : Time_ns.t option;
 }
 
 let init ~conf ~apply_log ~state =
@@ -52,6 +53,7 @@ let init ~conf ~apply_log ~state =
             ~last_log_index:(PersistentLog.last_index state.persistent_log);
       };
     should_step_down = false;
+    last_request_ts = None;
   }
 
 
@@ -162,8 +164,8 @@ let append_entries t =
       (Printf.sprintf
          "Received responses of append_entries. received:%d, majority:%d" n
          majority);
-    Lwt.return
-      ( if (* If there exists an N such that N > commitIndex, a majority
+   let result = (
+     if (* If there exists an N such that N > commitIndex, a majority
             * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
             * set commitIndex = N (§5.3, §5.4). *)
            n >= Conf.majority_of_nodes t.conf
@@ -175,12 +177,22 @@ let append_entries t =
         true
       )
       else false
-      )
+    ) in
+    t.last_request_ts <- Some (Time_ns.now ());
+    Lwt.return result
   )
 
 
 let heartbeat_span_sec t =
-  float_of_int t.conf.heartbeat_interval_millis /. 1000.0
+  let configured = Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis () in
+  let now = Time_ns.now () in
+  let wait = match t.last_request_ts with
+    | Some x ->
+      let next_fire_ts = Time_ns.add x configured in
+      Time_ns.diff next_fire_ts now
+    | None -> configured
+  in
+  Time_ns.Span.to_sec wait
 
 
 let handle_client_command t ~(param : Params.client_command_request) =
