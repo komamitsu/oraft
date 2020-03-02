@@ -126,6 +126,6 @@ class Verifier
 end
 
 if $0 == __FILE__
-  Verifier.new(16, 8, 256).run
+  Verifier.new(16, 8, 512).run
 end
 
