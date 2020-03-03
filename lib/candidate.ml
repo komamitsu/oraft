@@ -16,6 +16,8 @@ open State
  *)
 let mode = Some CANDIDATE
 
+let lock = Lwt_mutex.create ()
+
 type t = {
   conf : Conf.t;
   logger : Logger.t;
@@ -177,11 +179,11 @@ let run t () =
   in
   let handlers = request_handlers t ~election_timer in
   let server, stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
+    ~logger:t.logger ~lock ~table:handlers
   in
   (* Send RequestVote RPCs to all other servers *)
-  let vote_request = request_vote t in
+  let vote_request = Lwt_mutex.with_lock lock (fun () -> request_vote t) in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () ->

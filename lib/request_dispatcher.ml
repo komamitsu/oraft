@@ -10,11 +10,11 @@ type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 
 type processor = Params.request -> response
 
-let create ~port ~logger
+let create ~port ~logger ~lock
     ~(table : (key, converter * processor) Stdlib.Hashtbl.t) :
     unit Lwt.t * unit Lwt.u =
   let stop, server_stopper = Lwt.wait () in
-  let callback _conn req body =
+  let callback _conn req body = Lwt_mutex.with_lock lock (fun () ->
     let meth = req |> Request.meth in
     let path = req |> Request.uri |> Uri.path in
     let headers = req |> Request.headers in
@@ -43,6 +43,6 @@ let create ~port ~logger
              (Cohttp.Code.string_of_method meth)
              path);
         Server.respond_string ~status:`Not_found ~body:"" ()
-  in
+  ) in
   ( Server.create ~stop ~mode:(`TCP (`Port port)) (Server.make ~callback ()),
     server_stopper )

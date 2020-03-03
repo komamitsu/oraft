@@ -149,38 +149,36 @@ let request_append_entry t i =
 
 
 let append_entries t =
-  Lwt_mutex.with_lock lock (fun () ->
-    let persistent_log = t.state.common.persistent_log in
-    let volatile_state = t.state.common.volatile_state in
-    let last_log_index = PersistentLog.last_index persistent_log in
-    ( Lwt_list.mapi_p (request_append_entry t) (Conf.peer_nodes t.conf)
-    >>= fun results ->
-      Lwt_list.fold_left_s
-        (fun a result -> Lwt.return (if Option.is_some result then a + 1 else a))
-        1 (* Implicitly voting for myself *) results )
-    >>= fun n ->
-    let majority = Conf.majority_of_nodes t.conf in
-    Logger.debug t.logger
-      (Printf.sprintf
-         "Received responses of append_entries. received:%d, majority:%d" n
-         majority);
-   let result = (
-     if (* If there exists an N such that N > commitIndex, a majority
-            * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
-            * set commitIndex = N (§5.3, §5.4). *)
-           n >= Conf.majority_of_nodes t.conf
-      then (
-        VolatileState.update_commit_index volatile_state last_log_index;
-        VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-            let log = PersistentLog.get_exn persistent_log i in
-            t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data);
-        true
-      )
-      else false
-    ) in
-    t.last_request_ts <- Some (Time_ns.now ());
-    Lwt.return result
-  )
+  let persistent_log = t.state.common.persistent_log in
+  let volatile_state = t.state.common.volatile_state in
+  let last_log_index = PersistentLog.last_index persistent_log in
+  ( Lwt_list.mapi_p (request_append_entry t) (Conf.peer_nodes t.conf)
+  >>= fun results ->
+    Lwt_list.fold_left_s
+      (fun a result -> Lwt.return (if Option.is_some result then a + 1 else a))
+      1 (* Implicitly voting for myself *) results )
+  >>= fun n ->
+  let majority = Conf.majority_of_nodes t.conf in
+  Logger.debug t.logger
+    (Printf.sprintf
+       "Received responses of append_entries. received:%d, majority:%d" n
+       majority);
+ let result = (
+   if (* If there exists an N such that N > commitIndex, a majority
+          * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+          * set commitIndex = N (§5.3, §5.4). *)
+         n >= Conf.majority_of_nodes t.conf
+    then (
+      VolatileState.update_commit_index volatile_state last_log_index;
+      VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+          let log = PersistentLog.get_exn persistent_log i in
+          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data);
+      true
+    )
+    else false
+  ) in
+  t.last_request_ts <- Some (Time_ns.now ());
+  Lwt.return result
 
 
 let heartbeat_span_sec t =
@@ -274,7 +272,7 @@ let append_entries_thread t ~server_stopper =
   let sleep = heartbeat_span_sec t in
   let rec loop () =
     State.log_leader t.state ~logger:t.logger;
-    append_entries t >>= fun _ ->
+    Lwt_mutex.with_lock lock (fun () -> append_entries t) >>= fun _ ->
     Lwt_unix.sleep sleep >>= fun () ->
     if t.should_step_down
     then (
@@ -291,8 +289,8 @@ let run t () =
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
+      ~logger:t.logger ~lock ~table:handlers
   in
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
