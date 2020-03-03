@@ -26,6 +26,8 @@ open State
  *)
 let mode = Some LEADER
 
+let lock = Lwt_mutex.create ()
+
 type t = {
   conf : Conf.t;
   logger : Logger.t;
@@ -270,7 +272,7 @@ let append_entries_thread t ~server_stopper =
   let sleep = heartbeat_span_sec t in
   let rec loop () =
     State.log_leader t.state ~logger:t.logger;
-    append_entries t >>= fun _ ->
+    Lwt_mutex.with_lock lock (fun () -> append_entries t) >>= fun _ ->
     Lwt_unix.sleep sleep >>= fun () ->
     if t.should_step_down
     then (
@@ -287,8 +289,8 @@ let run t () =
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
+      ~logger:t.logger ~lock ~table:handlers
   in
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to

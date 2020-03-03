@@ -10,9 +10,7 @@ type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 
 type processor = Params.request -> response
 
-let lock = Lwt_mutex.create ()
-
-let create ~port ~logger
+let create ~port ~logger ~lock
     ~(table : (key, converter * processor) Stdlib.Hashtbl.t) :
     unit Lwt.t * unit Lwt.u =
   let stop, server_stopper = Lwt.wait () in

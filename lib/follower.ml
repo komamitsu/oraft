@@ -12,6 +12,8 @@ open Base
 
 let mode = Some FOLLOWER
 
+let lock = Lwt_mutex.create ()
+
 type t = {
   conf : Conf.t;
   logger : Logger.t;
@@ -81,8 +83,8 @@ let run t () =
   in
   let handlers = request_handlers t ~election_timer in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
+      ~logger:t.logger ~lock ~table:handlers
   in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())

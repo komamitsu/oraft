@@ -11,7 +11,7 @@
     "log_level": "INFO",
     "state_dir": "state",
     "election_timeout_millis": 400,
-    "heartbeat_interval_millis": 20,
+    "heartbeat_interval_millis": 100,
     "request_timeout_millis": 200
 }
 
