@@ -8,14 +8,14 @@ let handle_response ~logger ~converter ~node ~resp ~body =
   if status_code / 100 = 2
   then (
     Logger.debug logger
-      (Printf.sprintf "Received response from node:%d, body:%s" node.id body);
+      (Printf.sprintf "Received response from node: %d, body: %s" node.id body);
     let json = Yojson.Safe.from_string body in
     match converter json with
     | Ok param -> Some param
     | Error err ->
         Logger.error logger
           (Printf.sprintf
-             "Received an error response from node %d. err:%s, body:%s" node.id
+             "Received an error response from node %d. err: %s, body: %s" node.id
              err body);
         None
   )
@@ -37,7 +37,7 @@ let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
   let timeout: Params.response option Lwt.t =
     Lwt_unix.sleep ((float_of_int timeout_millis) /. 1000.0) >>= fun () -> (
       Logger.warn logger
-        (Printf.sprintf "Request timeout. node_id: %d" node.id);
+        (Printf.sprintf "Request timeout. node_id: %d, url_path: %s request: %s" node.id url_path (Yojson.Safe.to_string request_json));
       Lwt.return None
     ) in
   let send_req node =
