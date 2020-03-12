@@ -93,12 +93,12 @@ let send_request t i ~request_json ~entries ~prev_log_index =
     ~url_path:"append_entries" ~request_json ~timeout_millis:t.conf.request_timeout_millis
     ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
-      | Ok param when param.success ->
+      | Ok param when param.success -> (
           (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
           VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
             (prev_log_index + List.length entries);
-          VolatileStateOnLeader.set_next_index leader_state i
-            (VolatileStateOnLeader.match_index leader_state i + 1);
+          let match_index = VolatileStateOnLeader.match_index leader_state i in
+          VolatileStateOnLeader.set_next_index leader_state i (match_index + 1);
           (* All Servers:
            * - If RPC request or response contains term T > currentTerm:
            *   set currentTerm = T, convert to follower (§5.1)
@@ -107,12 +107,14 @@ let send_request t i ~request_json ~entries ~prev_log_index =
                ~other_term:param.term
           then t.should_step_down <- true;
           Ok (Params.APPEND_ENTRIES_RESPONSE param)
-      | Ok _ ->
+      )
+      | Ok _ -> (
           (* If AppendEntries fails because of log inconsistency:
            *  decrement nextIndex and retry (§5.3) *)
-          VolatileStateOnLeader.next_index leader_state i - 1
-          |> VolatileStateOnLeader.set_next_index leader_state i;
+          let next_index = VolatileStateOnLeader.next_index leader_state i in
+          VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
           Error "Need to try with decremented index"
+      )
       | Error _ as err -> err)
 
 

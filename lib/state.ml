@@ -110,7 +110,13 @@ module PersistentLog = struct
      * and term when entry was received by leader (first index is 1) *)
     mutable list : PersistentLogEntry.t list;
   }
-  [@@deriving show, yojson]
+
+  let show t =
+    let len = List.length t.list in
+    let n = min len 3 in
+    let entries = List.sub t.list ~pos:(len - n) ~len:n in
+    sprintf "{ State.PersistentLog.path = \"%s\"; last_index = %d; last_entries = %s }"
+      t.path t.last_index (List.to_string ~f:PersistentLogEntry.show entries)
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
@@ -146,9 +152,7 @@ module PersistentLog = struct
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
-    Logger.debug logger "PersistentLog : ";
-    to_string_list t |> List.iter ~f:(Logger.debug logger)
-
+    Logger.debug logger (sprintf "PersistentLog : %s" (show t))
 
   let get t i = List.nth t.list (i - 1)
 

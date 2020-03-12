@@ -56,10 +56,6 @@ module PersistentLog :
 
     val show : t -> string
 
-    val to_yojson : t -> Yojson.Safe.t
-
-    val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
-
     val load : state_dir:string -> t
 
     val to_string_list : t -> string list
