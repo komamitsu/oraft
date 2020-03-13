@@ -76,7 +76,7 @@ class Verifier
 
         k = key(i)
         v = send_command("GET #{k}")
-        diff = Random.rand(1000)
+        diff = Random.rand(100000)
         next_v = Integer(v) + diff
 
         if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
