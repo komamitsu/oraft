@@ -1,6 +1,4 @@
-type leader_node = {
-  host : string; port : int;
-}
+type leader_node = { host : string; port : int }
 
 type current_state = {
   mode : Base.mode;

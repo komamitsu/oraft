@@ -59,8 +59,8 @@ module PersistentState = struct
     if other_term > t.current_term
     then (
       Logger.info logger
-        (sprintf "Detected new leader's term: %d, state.term: %d"
-           other_term t.current_term);
+        (sprintf "Detected new leader's term: %d, state.term: %d" other_term
+           t.current_term);
       true
     )
     else false
@@ -70,8 +70,8 @@ module PersistentState = struct
     if other_term < t.current_term
     then (
       Logger.info logger
-        (sprintf "Detected old leader's term: %d, state.term: %d"
-           other_term t.current_term);
+        (sprintf "Detected old leader's term: %d, state.term: %d" other_term
+           t.current_term);
       true
     )
     else false
@@ -110,7 +110,16 @@ module PersistentLog = struct
      * and term when entry was received by leader (first index is 1) *)
     mutable list : PersistentLogEntry.t list;
   }
-  [@@deriving show, yojson]
+
+  let show t =
+    let len = List.length t.list in
+    let n = min len 3 in
+    let entries = List.sub t.list ~pos:(len - n) ~len:n in
+    sprintf
+      "{ State.PersistentLog.path = \"%s\"; last_index = %d; last_entries = [\n%s] }"
+      t.path t.last_index
+      (String.concat ~sep:"\n" (List.map entries ~f:PersistentLogEntry.show))
+
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
@@ -130,13 +139,12 @@ module PersistentLog = struct
                   if log.index < !cur
                   then
                     failwith
-                      (sprintf
-                         "Unexpected lower index in logs. cur:%d, log:%s" !cur
+                      (sprintf "Unexpected lower index in logs. cur:%d, log:%s"
+                         !cur
                          (PersistentLogEntry.show log));
                   cur := log.index;
                   log
-              | Error err ->
-                  failwith (sprintf "Failed to parse JSON: %s" err))
+              | Error err -> failwith (sprintf "Failed to parse JSON: %s" err))
             lines
         in
         { path; last_index = !cur; list = logs }
@@ -146,8 +154,7 @@ module PersistentLog = struct
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
-    Logger.debug logger "PersistentLog : ";
-    to_string_list t |> List.iter ~f:(Logger.debug logger)
+    Logger.debug logger (sprintf "PersistentLog : %s" (show t))
 
 
   let get t i = List.nth t.list (i - 1)
@@ -169,13 +176,19 @@ module PersistentLog = struct
 
 
   let append t ~term ~start ~entries =
-    let rec update_ xs i entries =
+    let rec update_ xs i (entries : PersistentLogEntry.t list) =
       if List.length entries = 0
       then xs
       else (
         (* New entry if needed *)
+        let entry_from_param = List.hd_exn entries in
+        (* TODO: Revisit here *)
         let entry : PersistentLogEntry.t =
-          { term; index = i + 1; data = List.hd_exn entries }
+          {
+            term = entry_from_param.term;
+            index = i + 1;
+            data = entry_from_param.data;
+          }
         in
         t.last_index <- i + 1;
         let current, rest =
@@ -243,9 +256,8 @@ module VolatileState = struct
       then (
         let i = t.last_applied + 1 in
         Logger.debug logger
-          (sprintf
-             "Applying %dth entry. state.volatile_state.commit_index: %d" i
-             (commit_index t));
+          (sprintf "Applying %dth entry. state.volatile_state.commit_index: %d"
+             i (commit_index t));
         f i;
         update_last_applied t i;
         loop ()
@@ -253,12 +265,12 @@ module VolatileState = struct
     in
     loop ()
 
+
   let mode t = t.mode
 
   let update_mode t ~logger mode =
     t.mode <- mode;
-    Logger.info logger
-      (sprintf "Mode is changed to %s" (Base.show_mode mode))
+    Logger.info logger (sprintf "Mode is changed to %s" (Base.show_mode mode))
 end
 
 (* Volatile state on leaders:
@@ -289,12 +301,14 @@ module VolatileStateOnLeader = struct
 
   let set_match_index t ~logger i x =
     let peer = List.nth_exn t i in
-    if peer.match_index > x then
-      Logger.warn logger (sprintf "matchIndex should monotonically increase within a \
-                              term, since servers don't forget entries. But it didn't. \
-                              match_index: old=%d, new=%d" peer.match_index x)
-    else
-      peer.match_index <- x
+    if peer.match_index > x
+    then
+      Logger.warn logger
+        (sprintf
+           "matchIndex should monotonically increase within a term, since servers don't forget entries. But it didn't. match_index: old=%d, new=%d"
+           peer.match_index x)
+    else peer.match_index <- x
+
 
   let show_nth_peer t i = get t i |> show_peer
 

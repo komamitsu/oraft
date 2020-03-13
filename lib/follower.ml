@@ -43,8 +43,8 @@ let request_handlers t ~election_timer =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~conf:t.conf
-            ~state:t.state ~logger:t.logger
+          Append_entries_handler.handle ~conf:t.conf ~state:t.state
+            ~logger:t.logger
             ~apply_log:
               t.apply_log
               (* If election timeout elapses without receiving AppendEntries
@@ -83,8 +83,8 @@ let run t () =
   in
   let handlers = request_handlers t ~election_timer in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
-      ~logger:t.logger ~lock ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
   in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())

@@ -9,7 +9,7 @@ type append_entries_request = {
   prev_log_index : int;
   (* log entries to store (empty for heartbeat;
    * may send more than one for efficiency) *)
-  entries : string list;
+  entries : State.PersistentLogEntry.t list;
   (* leaderCommit leader’s commitIndex *)
   leader_commit : int;
 }

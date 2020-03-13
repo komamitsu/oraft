@@ -18,9 +18,9 @@ open State
  *    min(leaderCommit, index of last new entry)
  *)
 
-let append_entries ~(conf: Conf.t) ~logger ~state
-    ~(param : Params.append_entries_request)
-    ~(apply_log:Base.apply_log) ~cb_valid_request ~cb_new_leader =
+let append_entries ~(conf : Conf.t) ~logger ~state
+    ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
+    ~cb_valid_request ~cb_new_leader =
   cb_valid_request ();
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
@@ -61,8 +61,7 @@ let append_entries ~(conf: Conf.t) ~logger ~state
       apply_log ~node_id:conf.node_id ~log_index:log.index ~log_data:log.data)
 
 
-let handle ~conf ~state ~logger ~apply_log
-    ~cb_valid_request ~cb_new_leader
+let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_new_leader
     ~(param : Params.append_entries_request) =
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
@@ -88,8 +87,8 @@ let handle ~conf ~state ~logger ~apply_log
       false
     )
     else (
-      append_entries ~conf ~logger ~state ~param ~apply_log
-        ~cb_valid_request ~cb_new_leader;
+      append_entries ~conf ~logger ~state ~param ~apply_log ~cb_valid_request
+        ~cb_new_leader;
       State.log state ~logger;
       true
     )
