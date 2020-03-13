@@ -115,8 +115,9 @@ module PersistentLog = struct
     let len = List.length t.list in
     let n = min len 3 in
     let entries = List.sub t.list ~pos:(len - n) ~len:n in
-    sprintf "{ State.PersistentLog.path = \"%s\"; last_index = %d; last_entries = %s }"
-      t.path t.last_index (List.to_string ~f:PersistentLogEntry.show entries)
+    sprintf "{ State.PersistentLog.path = \"%s\"; last_index = %d; last_entries = [\n%s] }"
+      t.path t.last_index
+      (String.concat ~sep:"\n" (List.map entries ~f:PersistentLogEntry.show))
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
@@ -173,13 +174,17 @@ module PersistentLog = struct
 
 
   let append t ~term ~start ~entries =
-    let rec update_ xs i entries =
+    let rec update_ xs i (entries: PersistentLogEntry.t list) =
       if List.length entries = 0
       then xs
       else (
         (* New entry if needed *)
+        let entry_from_param = List.hd_exn entries in
+        (* TODO: Revisit here *)
         let entry : PersistentLogEntry.t =
-          { term; index = i + 1; data = List.hd_exn entries }
+          { term = entry_from_param.term;
+            index = i + 1;
+            data = entry_from_param.data }
         in
         t.last_index <- i + 1;
         let current, rest =

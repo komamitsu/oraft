@@ -39,6 +39,8 @@ module PersistentLogEntry :
   sig
     type t = { term : int; index : int; data : string; }
 
+    val pp : Format.formatter -> t -> unit
+
     val show : t -> string
 
     val to_yojson : t -> Yojson.Safe.t
@@ -72,7 +74,7 @@ module PersistentLog :
 
     val append_to_file : t -> log:PersistentLogEntry.t -> unit
 
-    val append : t -> term:int -> start:int -> entries:string list -> unit
+    val append : t -> term:int -> start:int -> entries:PersistentLogEntry.t list -> unit
   end
 
 (** Volatile state on all servers *)

@@ -71,7 +71,7 @@ let prepare_entries t i =
     List.init (last_log_index - prev_log_index) ~f:(fun i ->
         let idx = i + prev_log_index + 1 in
         match PersistentLog.get persistent_log idx with
-        | Some x -> x.data
+        | Some x -> x
         | None ->
             let msg =
               Printf.sprintf "Can't find the log: i:%d, prev_log_index:%d" i
@@ -203,9 +203,10 @@ let handle_client_command t ~(param : Params.client_command_request) =
     (Printf.sprintf "Received client_command %s"
        (Params.show_client_command_request param));
   let next_index = PersistentLog.last_index persistent_log + 1 in
+  let term = PersistentState.current_term t.state.common.persistent_state in
   PersistentLog.append persistent_log
-    ~term:(PersistentState.current_term t.state.common.persistent_state)
-    ~start:next_index ~entries:[ param.data ];
+    ~term ~start:next_index
+    ~entries:[ { term; index = next_index; data = param.data; } ];
   append_entries t >>= fun result ->
   let status, response_body =
     if result
