@@ -1,3 +1,12 @@
+val handle :
+  conf:Conf.t ->
+  state:State.common ->
+  logger:Logger.t ->
+  apply_log:Base.apply_log ->
+  cb_valid_request:(unit -> unit) ->
+  cb_new_leader:(unit -> unit) ->
+  param:Params.append_entries_request ->
+  (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 (** Invoked by leader to replicate log entries (§5.3); also used as
  * heartbeat (§5.2).
  *
@@ -12,12 +21,3 @@
  * 5. If leaderCommit > commitIndex, set commitIndex =
  *    min(leaderCommit, index of last new entry)
  *)
-val handle :
-  conf: Conf.t ->
-  state:State.common ->
-  logger:Logger.t ->
-  apply_log:Base.apply_log ->
-  cb_valid_request:(unit -> unit) ->
-  cb_new_leader:(unit -> unit) ->
-  param:Params.append_entries_request ->
-  (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t

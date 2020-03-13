@@ -55,7 +55,8 @@ let request_vote t =
   in
   let request =
     Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-      ~url_path:"request_vote" ~request_json ~timeout_millis:t.conf.request_timeout_millis
+      ~url_path:"request_vote" ~request_json
+      ~timeout_millis:t.conf.request_timeout_millis
       ~converter:(fun response_json ->
         match Params.request_vote_response_of_yojson response_json with
         | Ok param ->
@@ -83,9 +84,8 @@ let request_handlers t ~election_timer =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~conf:t.conf
-            ~state:t.state ~logger:t.logger
-            ~apply_log:t.apply_log
+          Append_entries_handler.handle ~conf:t.conf ~state:t.state
+            ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
@@ -179,8 +179,8 @@ let run t () =
   in
   let handlers = request_handlers t ~election_timer in
   let server, stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
-    ~logger:t.logger ~lock ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
   in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request = Lwt_mutex.with_lock lock (fun () -> request_vote t) in

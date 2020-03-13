@@ -90,10 +90,11 @@ let send_request t i ~request_json ~entries ~prev_log_index =
     (Printf.sprintf "Sending append_entries: %s"
        (Yojson.Safe.to_string request_json));
   Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-    ~url_path:"append_entries" ~request_json ~timeout_millis:t.conf.request_timeout_millis
+    ~url_path:"append_entries" ~request_json
+    ~timeout_millis:t.conf.request_timeout_millis
     ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
-      | Ok param when param.success -> (
+      | Ok param when param.success ->
           (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
           VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
             (prev_log_index + List.length entries);
@@ -107,14 +108,12 @@ let send_request t i ~request_json ~entries ~prev_log_index =
                ~other_term:param.term
           then t.should_step_down <- true;
           Ok (Params.APPEND_ENTRIES_RESPONSE param)
-      )
-      | Ok _ -> (
+      | Ok _ ->
           (* If AppendEntries fails because of log inconsistency:
            *  decrement nextIndex and retry (§5.3) *)
           let next_index = VolatileStateOnLeader.next_index leader_state i in
           VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
           Error "Need to try with decremented index"
-      )
       | Error _ as err -> err)
 
 
@@ -165,31 +164,35 @@ let append_entries t =
     (Printf.sprintf
        "Received responses of append_entries. received:%d, majority:%d" n
        majority);
- let result = (
-   if (* If there exists an N such that N > commitIndex, a majority
+  let result =
+    if (* If there exists an N such that N > commitIndex, a majority
           * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
           * set commitIndex = N (§5.3, §5.4). *)
-         n >= Conf.majority_of_nodes t.conf
+       n >= Conf.majority_of_nodes t.conf
     then (
       VolatileState.update_commit_index volatile_state last_log_index;
       VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
           let log = PersistentLog.get_exn persistent_log i in
-          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data);
+          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+            ~log_data:log.data);
       true
     )
     else false
-  ) in
+  in
   t.last_request_ts <- Some (Time_ns.now ());
   Lwt.return result
 
 
 let heartbeat_span_sec t =
-  let configured = Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis () in
+  let configured =
+    Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis ()
+  in
   let now = Time_ns.now () in
-  let wait = match t.last_request_ts with
+  let wait =
+    match t.last_request_ts with
     | Some x ->
-      let next_fire_ts = Time_ns.add x configured in
-      Time_ns.diff next_fire_ts now
+        let next_fire_ts = Time_ns.add x configured in
+        Time_ns.diff next_fire_ts now
     | None -> configured
   in
   Time_ns.Span.to_sec wait
@@ -204,9 +207,8 @@ let handle_client_command t ~(param : Params.client_command_request) =
        (Params.show_client_command_request param));
   let next_index = PersistentLog.last_index persistent_log + 1 in
   let term = PersistentState.current_term t.state.common.persistent_state in
-  PersistentLog.append persistent_log
-    ~term ~start:next_index
-    ~entries:[ { term; index = next_index; data = param.data; } ];
+  PersistentLog.append persistent_log ~term ~start:next_index
+    ~entries:[ { term; index = next_index; data = param.data } ];
   append_entries t >>= fun result ->
   let status, response_body =
     if result
@@ -233,9 +235,8 @@ let request_handlers t =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~conf:t.conf 
-            ~state:t.state.common ~logger:t.logger
-            ~apply_log:t.apply_log
+          Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
+            ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
@@ -292,8 +293,8 @@ let run t () =
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
   let server, server_stopper =
-    Request_dispatcher.create ~port:(Conf.my_node t.conf).port
-      ~logger:t.logger ~lock ~table:handlers
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
   in
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
