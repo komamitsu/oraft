@@ -91,9 +91,14 @@ class Verifier
   end
 
   def verify_values
+    puts
+    puts "================================================================================"
+    puts "Result"
+    puts "--------------------------------------------------------------------------------"
     failed = 0
     @key_size.times.each do |i|
       k = key(i)
+      puts "Key: #{k}"
       expected = @table[k]
       @uris.each do |uri|
         v = Integer(send_command("GET #{k}", uri))
