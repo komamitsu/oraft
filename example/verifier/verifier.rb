@@ -1,5 +1,46 @@
+require 'logger'
 require 'parallel'
 require 'faraday'
+
+$logger = Logger.new(STDOUT)
+$logger.level = Logger::DEBUG
+
+class Error
+  def initialize
+    @last_ts = nil
+    @count = 0
+    @monitor = Monitor.new
+  end
+
+  def stalled?
+    @monitor.synchronize do
+      if @last_ts && Time.now - 2 < @last_ts
+        if @count > 8
+          return true
+        end
+      else
+        @last_ts = nil
+        @count = 0
+      end
+    end
+
+    return false
+  end
+
+  def incr
+    @monitor.synchronize do
+      @last_ts = Time.now
+      @count += 1
+    end
+  end
+
+  def reset
+    @monitor.synchronize do
+      @last_ts = nil
+      @count = 0
+    end
+  end
+end
 
 class Verifier
   RETRY = 32
@@ -15,7 +56,7 @@ class Verifier
       })
     end
     @errors = @clients.inject({}) {|a, x|
-      a[x] = { last_ts: nil, count: 0 }
+      a[x] = Error.new
       a
     }
     @table = {}
@@ -30,24 +71,20 @@ class Verifier
     RETRY.times.each do |i|
       client ||= @clients[Random.rand(5)]
       error = @errors[client] 
-      if error[:last_ts] && Time.now - 5 < error[:last_ts]
-        if error[:count] > 8
-          puts "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
-          client = nil
-          next
-        end
-      else
-        error[:count] = 0
+      if error.stalled?
+        $logger.warn "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
+        client = nil
+        next
       end
 
-      # puts "client=#{client.url_prefix}, command='#{command}'"
+      $logger.debug "client=#{client.url_prefix}, command='#{command}'"
 
       begin
         response = client.post("/command", command)
+        error.reset
       rescue Faraday::ConnectionFailed, Faraday::TimeoutError
         client = nil
-        error[:last_ts] = Time.now
-        error[:count] += 1
+        error.incr
         wait(0.1, 2, 1.5, i)
         next
       end
@@ -56,20 +93,18 @@ class Verifier
       when 0...200
         raise "Unexpected response: response=#{response}, command='#{command}'"
       when 200...300
-        error[:last_ts] = nil
-        error[:count] = 0
-        # puts "Success! command='#{command}'"
+        $logger.debug "Success! command='#{command}'"
         return response.body
       when 400
         raise "Bad Request: command='#{command}'"
       when 404
         raise "Not Found: command='#{command}'"
       when 409
-        puts "Conflict: command='#{command}'"
+        $logger.warn "Conflict: command='#{command}'"
         # Conflict
         return nil
       else # >= 500
-        puts "Temporary error: command='#{command}'"
+        $logger.warn "Temporary error: command='#{command}'"
         wait(0.1, 2, 1.5, i)
         next
       end
@@ -103,7 +138,7 @@ class Verifier
         diff = Random.rand(100000)
         next_v = Integer(v) + diff
 
-        # puts "[#{i}] diff=#{diff}"
+        $logger.debug "[#{i}] diff=#{diff}"
 
         if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
           @table[k] += diff
@@ -157,6 +192,7 @@ class Verifier
 end
 
 if $0 == __FILE__
-  Verifier.new(16, 8, 512).run
+  # Verifier.new(16, 8, 512).run
+  Verifier.new(24, 1, 512).run
 end
 
