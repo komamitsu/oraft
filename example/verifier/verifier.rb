@@ -2,13 +2,22 @@ require 'parallel'
 require 'faraday'
 
 class Verifier
+  RETRY = 32
+
   def initialize(concurrency, key_size, count)
     @concurrency = concurrency
     @key_size = key_size
     @count = count
-    @uris = 1.upto(5).map do |i|
-      "http://localhost:818#{i}/command"
+    @clients = 1.upto(5).map do |i|
+      Faraday.new("http://localhost:818#{i}", request: {
+        open_timeout: 0.4,
+        timeout: 0.8
+      })
     end
+    @errors = @clients.inject({}) {|a, x|
+      a[x] = { last_ts: nil, count: 0 }
+      a
+    }
     @table = {}
   end
 
@@ -17,15 +26,28 @@ class Verifier
     sleep([init_wait * (retry_factor ** retry_count), max_wait].min * (1.1 - Random.rand(0.2)))
   end
 
-  def send_command(command, uri = nil)
-    10.times.each do |i|
-      uri ||= @uris[Random.rand(5)]
+  def send_command(command, client = nil)
+    RETRY.times.each do |i|
+      client ||= @clients[Random.rand(5)]
+      error = @errors[client] 
+      if error[:last_ts] && Time.now - 5 < error[:last_ts]
+        if error[:count] > 8
+          puts "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
+          client = nil
+          next
+        end
+      else
+        error[:count] = 0
+      end
 
-      # puts "uri=#{uri}, command='#{command}'"
+      # puts "client=#{client.url_prefix}, command='#{command}'"
 
       begin
-        response = Faraday.post(uri, command)
-      rescue Faraday::ConnectionFailed
+        response = client.post("/command", command)
+      rescue Faraday::ConnectionFailed, Faraday::TimeoutError
+        client = nil
+        error[:last_ts] = Time.now
+        error[:count] += 1
         wait(0.1, 2, 1.5, i)
         next
       end
@@ -34,6 +56,8 @@ class Verifier
       when 0...200
         raise "Unexpected response: response=#{response}, command='#{command}'"
       when 200...300
+        error[:last_ts] = nil
+        error[:count] = 0
         # puts "Success! command='#{command}'"
         return response.body
       when 400
@@ -70,7 +94,7 @@ class Verifier
     Parallel.each(0...@count, :in_threads => @concurrency) do |i|
       retry_count = 0
       loop do
-        if retry_count >= 10
+        if retry_count >= RETRY
           raise "Retry over (CAS): i='#{i}'"
         end
 
@@ -78,6 +102,8 @@ class Verifier
         v = send_command("GET #{k}")
         diff = Random.rand(100000)
         next_v = Integer(v) + diff
+
+        # puts "[#{i}] diff=#{diff}"
 
         if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
           @table[k] += diff
@@ -100,8 +126,8 @@ class Verifier
       k = key(i)
       puts "Key: #{k}"
       expected = @table[k]
-      @uris.each do |uri|
-        v = Integer(send_command("GET #{k}", uri))
+      @clients.each do |client|
+        v = Integer(send_command("GET #{k}", client))
         if v == expected
           puts "Success: expected=#{expected}, actual=#{v}"
         else
