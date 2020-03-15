@@ -43,7 +43,9 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   in
   let request =
     Request_sender.post ~node_id:conf.node_id ~logger ~url_path:"client_command"
-      ~request_json ~timeout_millis:conf.request_timeout_millis
+      ~request_json
+      (* Afford to allow a connection timeout to unavailable server *)
+      ~timeout_millis:(conf.request_timeout_millis * 2)
       ~converter:(fun response_json ->
         match Params.client_command_response_of_yojson response_json with
         | Ok param -> Ok (Params.CLIENT_COMMAND_RESPONSE param)
