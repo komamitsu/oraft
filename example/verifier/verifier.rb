@@ -92,20 +92,20 @@ class Verifier
 
       case response.status
       when 0...200
-        raise "Unexpected response: response=#{response}, command='#{command}'"
+        raise "Unexpected response: response=#{response}, command='#{command}', error=#{response.body}"
       when 200...300
         $logger.debug "Success! command='#{command}'"
         return response.body
       when 400
-        raise "Bad Request: command='#{command}'"
+        raise "Bad Request: command='#{command}', error=#{response.body}"
       when 404
-        raise "Not Found: command='#{command}'"
+        raise "Not Found: command='#{command}', error=#{response.body}"
       when 409
-        $logger.warn "Conflict: command='#{command}'"
+        $logger.warn "Conflict: command='#{command}', error=#{response.body}"
         # Conflict
         return nil
       else # >= 500
-        $logger.warn "Temporary error: command='#{command}'"
+        $logger.warn "Temporary error: command='#{command}', error=#{response.body}"
         wait(0.1, 2, 1.5, i)
         next
       end
