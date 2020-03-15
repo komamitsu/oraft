@@ -150,6 +150,7 @@ let request_append_entry t i =
 
 
 let append_entries t =
+  if t.should_step_down then failwith "Retiring";
   let persistent_log = t.state.common.persistent_log in
   let volatile_state = t.state.common.volatile_state in
   let last_log_index = PersistentLog.last_index persistent_log in
@@ -273,10 +274,10 @@ let request_handlers t =
 
 
 let append_entries_thread t ~server_stopper =
-  let sleep = heartbeat_span_sec t in
   let rec loop () =
     State.log_leader t.state ~logger:t.logger;
     Lwt_mutex.with_lock lock (fun () -> append_entries t) >>= fun _ ->
+    let sleep = heartbeat_span_sec t in
     Lwt_unix.sleep sleep >>= fun () ->
     if t.should_step_down
     then (
