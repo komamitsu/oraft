@@ -38,9 +38,7 @@ let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
   let timeout : Params.response option Lwt.t =
     Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) >>= fun () ->
     Logger.warn logger
-      (Printf.sprintf "Request timeout. node_id: %d, url_path: %s request: %s"
-         node.id url_path
-         (Yojson.Safe.to_string request_json));
+      (Printf.sprintf "Request timeout. node_id: %d, url_path: %s" node.id url_path);
     Lwt.return None
   in
   let send_req node =
