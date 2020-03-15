@@ -45,10 +45,11 @@ end
 class Verifier
   RETRY = 32
 
-  def initialize(concurrency, key_size, count)
+  def initialize(concurrency, key_size, count, wait_ms)
     @concurrency = concurrency
     @key_size = key_size
     @count = count
+    @wait_ms = wait_ms
     @clients = 1.upto(5).map do |i|
       Faraday.new("http://localhost:818#{i}", request: {
         open_timeout: 0.4,
@@ -127,6 +128,7 @@ class Verifier
 
   def update_values
     Parallel.each(0...@count, :in_threads => @concurrency) do |i|
+      sleep(@wait_ms / 1000.0)
       retry_count = 0
       loop do
         if retry_count >= RETRY
@@ -192,7 +194,6 @@ class Verifier
 end
 
 if $0 == __FILE__
-  # Verifier.new(16, 8, 512).run
-  Verifier.new(24, 1, 512).run
+  Verifier.new(4, 16, 512, 500).run
 end
 
