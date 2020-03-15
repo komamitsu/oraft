@@ -94,10 +94,10 @@ module VolatileState : sig
 
   val apply_logs : t -> logger:Logger.t -> f:(int -> unit) -> unit
 
-  (* This isn't shown in the paper *)
+  (* This is a customized function that isn't shown in the paper *)
   val mode : t -> Base.mode
 
-  (* This isn't shown in the paper *)
+  (* This is a customized function that isn't shown in the paper *)
   val update_mode : t -> logger:Logger.t -> Base.mode -> unit
 end
 

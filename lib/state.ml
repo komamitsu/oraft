@@ -87,7 +87,8 @@ module PersistentState = struct
     Logger.info logger
       (sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
          (to_string voted_for));
-    t.voted_for <- voted_for
+    t.voted_for <- voted_for;
+    save t
 end
 
 (* Persistent log state *)
@@ -222,7 +223,7 @@ module VolatileState = struct
     (* index of highest log entry applied to state
      * machine (initialized to 0, increases monotonically) *)
     mutable last_applied : int;
-    (* This isn't shown in the paper *)
+    (* This is a customized field that isn't shown in the paper *)
     mutable mode : Base.mode;
   }
   [@@deriving show]

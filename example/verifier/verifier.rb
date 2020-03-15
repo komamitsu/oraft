@@ -1,14 +1,65 @@
+require 'logger'
 require 'parallel'
 require 'faraday'
 
+$logger = Logger.new(STDOUT)
+$logger.level = Logger::DEBUG
+
+class Error
+  def initialize
+    @last_ts = nil
+    @count = 0
+    @monitor = Monitor.new
+  end
+
+  def stalled?
+    @monitor.synchronize do
+      if @last_ts && Time.now - 2 < @last_ts
+        if @count > 8
+          return true
+        end
+      else
+        @last_ts = nil
+        @count = 0
+      end
+    end
+
+    return false
+  end
+
+  def incr
+    @monitor.synchronize do
+      @last_ts = Time.now
+      @count += 1
+    end
+  end
+
+  def reset
+    @monitor.synchronize do
+      @last_ts = nil
+      @count = 0
+    end
+  end
+end
+
 class Verifier
-  def initialize(concurrency, key_size, count)
+  RETRY = 32
+
+  def initialize(concurrency, key_size, count, wait_ms)
     @concurrency = concurrency
     @key_size = key_size
     @count = count
-    @uris = 1.upto(5).map do |i|
-      "http://localhost:818#{i}/command"
+    @wait_ms = wait_ms
+    @clients = 1.upto(5).map do |i|
+      Faraday.new("http://localhost:818#{i}", request: {
+        open_timeout: 0.4,
+        timeout: 0.8
+      })
     end
+    @errors = @clients.inject({}) {|a, x|
+      a[x] = Error.new
+      a
+    }
     @table = {}
   end
 
@@ -17,35 +68,44 @@ class Verifier
     sleep([init_wait * (retry_factor ** retry_count), max_wait].min * (1.1 - Random.rand(0.2)))
   end
 
-  def send_command(command, uri = nil)
-    10.times.each do |i|
-      uri ||= @uris[Random.rand(5)]
+  def send_command(command, client = nil)
+    RETRY.times.each do |i|
+      client ||= @clients[Random.rand(5)]
+      error = @errors[client] 
+      if error.stalled?
+        $logger.warn "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
+        client = nil
+        next
+      end
 
-      # puts "uri=#{uri}, command='#{command}'"
+      $logger.debug "client=#{client.url_prefix}, command='#{command}'"
 
       begin
-        response = Faraday.post(uri, command)
-      rescue Faraday::ConnectionFailed
+        response = client.post("/command", command)
+        error.reset
+      rescue Faraday::ConnectionFailed, Faraday::TimeoutError
+        client = nil
+        error.incr
         wait(0.1, 2, 1.5, i)
         next
       end
 
       case response.status
       when 0...200
-        raise "Unexpected response: response=#{response}, command='#{command}'"
+        raise "Unexpected response: response=#{response}, command='#{command}', error=#{response.body}"
       when 200...300
-        # puts "Success! command='#{command}'"
+        $logger.debug "Success! command='#{command}'"
         return response.body
       when 400
-        raise "Bad Request: command='#{command}'"
+        raise "Bad Request: command='#{command}', error=#{response.body}"
       when 404
-        raise "Not Found: command='#{command}'"
+        raise "Not Found: command='#{command}', error=#{response.body}"
       when 409
-        puts "Conflict: command='#{command}'"
+        $logger.warn "Conflict: command='#{command}', error=#{response.body}"
         # Conflict
         return nil
       else # >= 500
-        puts "Temporary error: command='#{command}'"
+        $logger.warn "Temporary error: command='#{command}', error=#{response.body}"
         wait(0.1, 2, 1.5, i)
         next
       end
@@ -68,9 +128,10 @@ class Verifier
 
   def update_values
     Parallel.each(0...@count, :in_threads => @concurrency) do |i|
+      sleep(@wait_ms / 1000.0)
       retry_count = 0
       loop do
-        if retry_count >= 10
+        if retry_count >= RETRY
           raise "Retry over (CAS): i='#{i}'"
         end
 
@@ -78,6 +139,8 @@ class Verifier
         v = send_command("GET #{k}")
         diff = Random.rand(100000)
         next_v = Integer(v) + diff
+
+        $logger.debug "[#{i}] diff=#{diff}"
 
         if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
           @table[k] += diff
@@ -91,12 +154,17 @@ class Verifier
   end
 
   def verify_values
+    puts
+    puts "================================================================================"
+    puts "Result"
+    puts "--------------------------------------------------------------------------------"
     failed = 0
     @key_size.times.each do |i|
       k = key(i)
+      puts "Key: #{k}"
       expected = @table[k]
-      @uris.each do |uri|
-        v = Integer(send_command("GET #{k}", uri))
+      @clients.each do |client|
+        v = Integer(send_command("GET #{k}", client))
         if v == expected
           puts "Success: expected=#{expected}, actual=#{v}"
         else
@@ -126,6 +194,6 @@ class Verifier
 end
 
 if $0 == __FILE__
-  Verifier.new(16, 8, 512).run
+  Verifier.new(4, 16, 512, 500).run
 end
 
