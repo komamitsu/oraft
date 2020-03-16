@@ -94,11 +94,14 @@ module VolatileState : sig
 
   val apply_logs : t -> logger:Logger.t -> f:(int -> unit) -> unit
 
-  (* This is a customized function that isn't shown in the paper *)
+  (** These are customized functions that aren't shown in the paper *)
   val mode : t -> Base.mode
 
-  (* This is a customized function that isn't shown in the paper *)
   val update_mode : t -> logger:Logger.t -> Base.mode -> unit
+
+  val leader_id : t -> int option
+
+  val update_leader_id : t -> logger:Logger.t -> int -> unit
 end
 
 (** Volatile state on leaders:

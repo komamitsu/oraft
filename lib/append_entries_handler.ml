@@ -22,6 +22,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
     ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
     ~cb_valid_request ~cb_new_leader =
   cb_valid_request ();
+  VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let volatile_state = state.volatile_state in

@@ -51,7 +51,7 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
         | Ok param -> Ok (Params.CLIENT_COMMAND_RESPONSE param)
         | Error _ as err -> err)
   in
-  match PersistentState.voted_for state.persistent_state with
+  match VolatileState.leader_id state.volatile_state with
   | Some node_id ->
       let current_leader_node = Conf.peer_node conf ~node_id in
       request current_leader_node >>= fun result ->
@@ -87,7 +87,7 @@ let start ~conf_file ~apply_log =
         let mode = VolatileState.mode state.volatile_state in
         let term = PersistentState.current_term state.persistent_state in
         let leader =
-          match PersistentState.voted_for state.persistent_state with
+          match VolatileState.leader_id state.volatile_state with
           | Some x ->
               let leader = Conf.peer_node conf ~node_id:x in
               Some { host = leader.host; port = leader.app_port }
