@@ -172,6 +172,7 @@ let append_entries t =
        n >= Conf.majority_of_nodes t.conf
     then (
       VolatileState.update_commit_index volatile_state last_log_index;
+      VolatileState.update_leader_id volatile_state ~logger:t.logger t.conf.node_id;
       VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
           let log = PersistentLog.get_exn persistent_log i in
           t.apply_log ~node_id:t.conf.node_id ~log_index:log.index

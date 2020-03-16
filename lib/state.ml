@@ -225,10 +225,12 @@ module VolatileState = struct
     mutable last_applied : int;
     (* This is a customized field that isn't shown in the paper *)
     mutable mode : Base.mode;
+    (* This is a customized field that isn't shown in the paper *)
+    mutable leader_id : int option;
   }
   [@@deriving show]
 
-  let create () = { commit_index = 0; last_applied = 0; mode = FOLLOWER }
+  let create () = { commit_index = 0; last_applied = 0; mode = FOLLOWER; leader_id = None }
 
   let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
 
@@ -272,6 +274,16 @@ module VolatileState = struct
   let update_mode t ~logger mode =
     t.mode <- mode;
     Logger.info logger (sprintf "Mode is changed to %s" (Base.show_mode mode))
+
+  let leader_id t = t.leader_id
+
+  let update_leader_id t ~logger leader_id =
+    match t.leader_id with
+    | Some x when x = leader_id -> ()
+    | _ -> (
+      t.leader_id <- Some leader_id;
+      Logger.info logger (sprintf "Leader ID is changed to %d" leader_id)
+    )
 end
 
 (* Volatile state on leaders:
