@@ -1,3 +1,5 @@
+#!/usr/bin/env ruby
+
 require 'logger'
 require 'parallel'
 require 'faraday'
@@ -178,10 +180,13 @@ class Verifier
     puts
     if failed == 0
       puts "All good"
+      puts
+      true
     else
       puts "Detected any failure: failed_count=#{failed}"
+      puts
+      false
     end
-    puts
   end
 
   def run
@@ -194,6 +199,10 @@ class Verifier
 end
 
 if $0 == __FILE__
-  Verifier.new(4, 16, 512, 500).run
+  if Verifier.new(4, 16, 512, 500).run
+    exit 0
+  else
+    exit 1
+  end
 end
 
