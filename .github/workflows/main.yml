@@ -9,11 +9,12 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install packages
       run: |
-        apt update
-        apt install -y make patch curl ocaml-nox m4 unzip bubblewrap tzdata netbase 
+        sudo apt update
+        sudo apt install -y make patch curl ocaml-nox m4 unzip bubblewrap tzdata netbase 
     - name: Install and setup Opam
       run: |
-        curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux && chmod +x /usr/local/bin/opam
+        sudo curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux
+        sudo chmod +x /usr/local/bin/opam
         opam init --bare --disable-sandboxing
         opam switch create 4.09.0 ocaml-base-compiler.4.09.0
         opam install -y dune cohttp-lwt-unix core ppx_deriving ppx_deriving_yojson yojson fileutils oUnit
