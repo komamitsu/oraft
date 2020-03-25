@@ -27,13 +27,11 @@ jobs:
         [ $(opam switch show) != '4.09.0' ] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
         opam install -y dune cohttp-lwt-unix core ppx_deriving ppx_deriving_yojson yojson fileutils oUnit
     - name: Unit test
-      run: |
-        eval $(opam env)
-        dune runtest
+      run: opam exec -- dune runtest
     - name: Build Oraft
       run: opam exec -- dune build --profile=release
     - uses: actions/setup-ruby@v1
       with:
         ruby-version: '2.6'
     - name: Smoke test
-      run: smoke_test/run.sh
+      run: opam exec -- smoke_test/run.sh
