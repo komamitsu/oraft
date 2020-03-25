@@ -23,7 +23,7 @@ jobs:
         key: ${{ runner.os }}-opam-${{ hashFiles('oraft.opam') }}
     - name: Setup Opam and dependencies
       run: |
-        opam init --bare --disable-sandboxing --shell-setup
+        opam init --bare --disable-sandboxing --shell-setup --reinit
         opam switch create 4.09.0 ocaml-base-compiler.4.09.0
         opam install -y dune cohttp-lwt-unix core ppx_deriving ppx_deriving_yojson yojson fileutils oUnit
     - name: Unit test
