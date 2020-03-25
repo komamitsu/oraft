@@ -29,7 +29,7 @@ jobs:
     - name: Unit test
       run: opam exec -- dune runtest
     - name: Build Oraft
-      run: opam exec -- dune build --profile=release
+      run: opam exec -- dune build
     - uses: actions/setup-ruby@v1
       with:
         ruby-version: '2.6'
