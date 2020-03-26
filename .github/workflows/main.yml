@@ -24,7 +24,7 @@ jobs:
     - name: Setup Opam and dependencies
       run: |
         opam init --bare --disable-sandboxing
-        [ $(opam switch show) != '4.09.0' ] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
+        [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
         opam install -y dune cohttp-lwt-unix core ppx_deriving ppx_deriving_yojson yojson fileutils oUnit
     - name: Unit test
       run: opam exec -- dune runtest
