@@ -15,9 +15,9 @@ services:
   oraft-1:
     build:
       context: .
-      dockerfile: example/docker/Dockerfile
+      dockerfile: ${DOCKER_CONF_DIR}/Dockerfile
     volumes:
-    - ./example/docker/oraft-1:/workspace
+    - ${DOCKER_CONF_DIR}/oraft-1:/workspace
     ports:
     - 7891
     - '8181:8181'
@@ -27,9 +27,9 @@ services:
   oraft-2:
     build:
       context: .
-      dockerfile: example/docker/Dockerfile
+      dockerfile: ${DOCKER_CONF_DIR}/Dockerfile
     volumes:
-    - ./example/docker/oraft-2:/workspace
+    - ${DOCKER_CONF_DIR}/oraft-2:/workspace
     ports:
     - 7891
     - '8182:8181'
@@ -39,9 +39,9 @@ services:
   oraft-3:
     build:
       context: .
-      dockerfile: example/docker/Dockerfile
+      dockerfile: ${DOCKER_CONF_DIR}/Dockerfile
     volumes:
-    - ./example/docker/oraft-3:/workspace
+    - ${DOCKER_CONF_DIR}/oraft-3:/workspace
     ports:
     - 7891
     - '8183:8181'
@@ -51,9 +51,9 @@ services:
   oraft-4:
     build:
       context: .
-      dockerfile: example/docker/Dockerfile
+      dockerfile: ${DOCKER_CONF_DIR}/Dockerfile
     volumes:
-    - ./example/docker/oraft-4:/workspace
+    - ${DOCKER_CONF_DIR}/oraft-4:/workspace
     ports:
     - 7891
     - '8184:8181'
@@ -63,9 +63,9 @@ services:
   oraft-5:
     build:
       context: .
-      dockerfile: example/docker/Dockerfile
+      dockerfile: ${DOCKER_CONF_DIR}/Dockerfile
     volumes:
-    - ./example/docker/oraft-5:/workspace
+    - ${DOCKER_CONF_DIR}/oraft-5:/workspace
     ports:
     - 7891
     - '8185:8181'
