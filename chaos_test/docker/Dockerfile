@@ -11,7 +11,7 @@ WORKDIR /build
 RUN opam exec -- dune build --profile=release
 
 FROM ubuntu:18.04
-RUN apt update && apt install -y tzdata netbase
+RUN apt update && apt install -y tzdata netbase netcat tcpdump net-tools
 COPY --from=build-env /build/_build/default/example/oraft_example.exe /
 WORKDIR /workspace
-CMD /oraft_example.exe 7891 conf.json
+CMD /oraft_example.exe 8181 conf.json
