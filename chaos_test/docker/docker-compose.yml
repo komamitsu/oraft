@@ -24,6 +24,7 @@ services:
     networks:
     - oraft
     container_name: oraft-1
+    restart: always
   oraft-2:
     build:
       context: .
@@ -36,6 +37,7 @@ services:
     networks:
     - oraft
     container_name: oraft-2
+    restart: always
   oraft-3:
     build:
       context: .
@@ -48,6 +50,7 @@ services:
     networks:
     - oraft
     container_name: oraft-3
+    restart: always
   oraft-4:
     build:
       context: .
@@ -72,3 +75,38 @@ services:
     networks:
     - oraft
     container_name: oraft-5
+    restart: always
+  chaos-pause:
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level info --random --interval 7s pause --duration 2s re2:oraft-*"
+    depends_on:
+    - oraft-1 
+    - oraft-2 
+    - oraft-3 
+    - oraft-4 
+    - oraft-5 
+  chaos-delay:
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level info --random --interval 11s netem --tc-image gaiadocker/iproute2 --duration 4s delay re2:oraft-*"
+    depends_on:
+    - oraft-1 
+    - oraft-2 
+    - oraft-3 
+    - oraft-4 
+    - oraft-5 
+# chaos-loss:
+#   image: gaiaadm/pumba
+#   volumes:
+#   - /var/run/docker.sock:/var/run/docker.sock
+#   command: "--log-level info --random --interval 13s netem --tc-image gaiadocker/iproute2 --duration 3s loss re2:oraft-*"
+#   depends_on:
+#   - oraft-1 
+#   - oraft-2 
+#   - oraft-3 
+#   - oraft-4 
+#   - oraft-5 
+
