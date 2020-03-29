@@ -52,26 +52,26 @@ services:
     - 7891
     - '8185:8181'
     container_name: oraft-5
-# chaos-pause:
-#   image: gaiaadm/pumba
-#   volumes:
-#   - /var/run/docker.sock:/var/run/docker.sock
-#   command: "--log-level info --random --interval 7s pause --duration 2s re2:oraft-*"
-#   depends_on:
-#   - oraft-1 
-#   - oraft-2 
-#   - oraft-3 
-#   - oraft-4 
-#   - oraft-5 
+  chaos-pause:
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level info --random --interval 7s pause --duration 2s re2:oraft-*"
+    depends_on:
+    - oraft-1
+    - oraft-2
+    - oraft-3
+    - oraft-4
+    - oraft-5
 # chaos-delay:
 #   image: gaiaadm/pumba
 #   volumes:
 #   - /var/run/docker.sock:/var/run/docker.sock
 #   command: "--log-level info --random --interval 11s netem --tc-image gaiadocker/iproute2 --duration 4s delay re2:oraft-*"
 #   depends_on:
-#   - oraft-1 
-#   - oraft-2 
-#   - oraft-3 
-#   - oraft-4 
-#   - oraft-5 
+#   - oraft-1
+#   - oraft-2
+#   - oraft-3
+#   - oraft-4
+#   - oraft-5
 
