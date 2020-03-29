@@ -35,3 +35,6 @@ jobs:
         ruby-version: '2.6'
     - name: Smoke test
       run: opam exec -- smoke_test/run.sh
+    - name: Chaos test
+      run: opam exec -- chaos_test/run.sh
+
