@@ -8,8 +8,8 @@ verifier_dir=$root_dir/verifier
 wait_after_launch=30
 
 pushd $script_dir
-./docker/run_cluster.sh build
-./docker/run_cluster.sh up &
+./docker/build_cluster.sh
+./docker/run_cluster.sh &
 pid_of_cluster=$!
 popd
 
