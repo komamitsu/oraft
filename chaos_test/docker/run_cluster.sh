@@ -23,8 +23,6 @@ case $cmd in
         ;;
     up)
         docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml up &
-        pid_of_docker=$!
-        trap "kill $pid_of_docker" EXIT
         ;;
     *)
         echo "usage: $0 (build|up)"
