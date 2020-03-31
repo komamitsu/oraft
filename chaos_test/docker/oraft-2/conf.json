@@ -1,0 +1,17 @@
+{
+    "node_id": 2,
+    "nodes": [
+        {"id": 1, "host": "oraft-1", "port": 7891, "app_port": 8181},
+        {"id": 2, "host": "oraft-2", "port": 7891, "app_port": 8181},
+        {"id": 3, "host": "oraft-3", "port": 7891, "app_port": 8181},
+        {"id": 4, "host": "oraft-4", "port": 7891, "app_port": 8181},
+        {"id": 5, "host": "oraft-5", "port": 7891, "app_port": 8181}
+    ],
+    "log_file": "oraft.log",
+    "log_level": "INFO",
+    "state_dir": "state",
+    "election_timeout_millis": 500,
+    "heartbeat_interval_millis": 50,
+    "request_timeout_millis": 100
+}
+
