@@ -8,7 +8,6 @@ Library of [Raft consensus algorithm](https://raft.github.io/raft.pdf) implement
 
 ### TODO
 
-- Test with [Japsen](https://github.com/jepsen-io/jepsen)
 - Cluster membership changes
 - Log compaction
 
@@ -33,8 +32,26 @@ $ opam install .
 ## Test
 
 
+### Unit test
+
 ```
 $ dune runtest
+```
+
+### Smoke test
+
+This repository has an example Raft application that is a simple KVS as described below. The following command runs 5 KVS servers and a verification tool that sequentially restarts at most 2 servers.
+
+```
+$ smoke_test/run.sh
+```
+
+### Chaos test
+
+This repository has an example Raft application that is a simple KVS as described below. The following command runs 5 KVS servers, a verification tool and [chaos testing tool](https://github.com/alexei-led/pumba) in docker containers. The 5 KVS servers will randomly experience pause and network delay.
+
+```
+$ chaos_test/run.sh
 ```
 
 ## Usage
@@ -113,13 +130,5 @@ $ curl -X POST --data-binary 'GET b' http://localhost:8181/command
 43
 ```
 
-### Run a cluster on Docker containers
 
-You can execute the project with Docker containers:
-
-```
-$ ./example/docker/run_cluster.sh
-```
-
-5 Docker containers run the Raft application will start.
 
