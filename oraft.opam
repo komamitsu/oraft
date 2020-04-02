@@ -15,7 +15,7 @@ build: [
 
 depends: [
     "dune"
-    "core"
+    "core" {>= "v0.9.0"}
     "cohttp-lwt-unix"
     "yojson"
     "ppx_deriving"
