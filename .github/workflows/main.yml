@@ -26,7 +26,7 @@ jobs:
         opam init --bare --disable-sandboxing
         [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
         opam install . -y --deps-only
-        opam install -y fileutils
+        opam install -y fileutils oUnit
     - name: Unit test
       run: opam exec -- dune runtest
     - name: Build Oraft
