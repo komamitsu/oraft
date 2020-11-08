@@ -25,6 +25,7 @@ jobs:
       run: |
         opam init --bare --disable-sandboxing
         [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
+        opam depext conf-pkg-config
         opam install . -y --deps-only
         opam install -y fileutils oUnit
     - name: Unit test
