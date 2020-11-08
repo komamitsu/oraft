@@ -10,7 +10,7 @@ jobs:
     - name: Install packages
       run: |
         sudo apt update
-        sudo apt install -y make patch curl ocaml-nox m4 unzip bubblewrap tzdata netbase 
+        sudo apt install -y make patch curl ocaml-nox m4 unzip pkg-config bubblewrap tzdata netbase
     - name: Install Opam
       run: |
         sudo curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux
@@ -25,7 +25,6 @@ jobs:
       run: |
         opam init --bare --disable-sandboxing
         [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
-        opam depext -y conf-pkg-config
         opam install . -y --deps-only
         opam install -y fileutils oUnit
     - name: Unit test
