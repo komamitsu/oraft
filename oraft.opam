@@ -21,5 +21,6 @@ depends: [
     "ppx_deriving"
     "ppx_deriving_yojson"
     "ounit" {with-test}
+    "fileutils" {with-test}
 ]
 
