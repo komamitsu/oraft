@@ -14,6 +14,7 @@ build: [
 ]
 
 depends: [
+    "ocaml" {>= "4.05.0"}
     "dune"
     "core" {>= "v0.9.0"}
     "cohttp-lwt-unix"  {< "3.0.0"}
