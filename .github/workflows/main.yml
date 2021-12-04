@@ -10,7 +10,7 @@ jobs:
     - name: Install packages
       run: |
         sudo apt update
-        sudo apt install -y make patch curl ocaml-nox m4 unzip pkg-config bubblewrap tzdata netbase
+        sudo apt install -y make patch curl ocaml-nox m4 unzip pkg-config libgmp-dev bubblewrap tzdata netbase
     - name: Install Opam
       run: |
         sudo curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux
