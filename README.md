@@ -19,7 +19,7 @@ Library of [Raft consensus algorithm](https://raft.github.io/raft.pdf) implement
 ## Build
 
 ```
-$ opam install --deps-only .
+$ opam install --deps-only --with-test .
 $ dune build
 ```
 
