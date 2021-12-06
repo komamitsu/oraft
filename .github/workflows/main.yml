@@ -16,6 +16,8 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           dune-cache: true
+      - name: Install dependencies for testing
+        run: opam install --deps-only --with-test .
       - name: Unit test
         run: opam exec -- dune runtest
       - name: Build Oraft
