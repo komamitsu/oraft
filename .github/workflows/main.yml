@@ -1,5 +1,12 @@
 name: CI
 
+strategy:
+  matrix:
+    container:
+    - ubuntu:latest
+  ocaml-compiler:
+    - ocaml-base-compiler.4.09.0
+
 on: [push]
 
 jobs:
@@ -7,25 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Install packages
-      run: |
-        sudo apt update
-        sudo apt install -y make patch curl ocaml-nox m4 unzip pkg-config libgmp-dev bubblewrap tzdata netbase
-    - name: Install Opam
-      run: |
-        sudo curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux
-        sudo chmod +x /usr/local/bin/opam
-    - name: Restore Opam cache
-      id: cache-opam
-      uses: actions/cache@v1
+    - name: Use OCaml ${{ matrix.ocaml-compiler }}
+      uses: ocaml/setup-ocaml@v2
       with:
-        path: ~/.opam
-        key: ${{ runner.os }}-opam-${{ hashFiles('oraft.opam') }}
-    - name: Setup Opam and dependencies
-      run: |
-        opam init --bare --disable-sandboxing
-        [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
-        opam install . -y --deps-only --with-test
+        ocaml-compiler: ${{ matrix.ocaml-compiler }}
+        dune-cache: true
     - name: Unit test
       run: opam exec -- dune runtest
     - name: Build Oraft
