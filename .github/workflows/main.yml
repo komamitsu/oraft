@@ -1,17 +1,16 @@
 name: CI
 
-strategy:
-  matrix:
-    container:
-    - ubuntu:latest
-  ocaml-compiler:
-    - ocaml-base-compiler.4.09.0
-
 on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        container:
+        - ubuntu:latest
+      ocaml-compiler:
+        - ocaml-base-compiler.4.09.0
     steps:
     - uses: actions/checkout@v2
     - name: Use OCaml ${{ matrix.ocaml-compiler }}
