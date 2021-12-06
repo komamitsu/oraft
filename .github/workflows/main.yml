@@ -7,26 +7,24 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        container:
-        - ubuntu:latest
-      ocaml-compiler:
-        - ocaml-base-compiler.4.09.0
+        ocaml-compiler:
+          - ocaml-base-compiler.4.09.0
     steps:
-    - uses: actions/checkout@v2
-    - name: Use OCaml ${{ matrix.ocaml-compiler }}
-      uses: ocaml/setup-ocaml@v2
-      with:
-        ocaml-compiler: ${{ matrix.ocaml-compiler }}
-        dune-cache: true
-    - name: Unit test
-      run: opam exec -- dune runtest
-    - name: Build Oraft
-      run: opam exec -- dune build
-    - uses: actions/setup-ruby@v1
-      with:
-        ruby-version: '2.6'
-    - name: Smoke test
-      run: opam exec -- smoke_test/run.sh
-    - name: Chaos test
-      run: opam exec -- chaos_test/run.sh
+      - uses: actions/checkout@v2
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          dune-cache: true
+      - name: Unit test
+        run: opam exec -- dune runtest
+      - name: Build Oraft
+        run: opam exec -- dune build
+      - uses: actions/setup-ruby@v1
+        with:
+          ruby-version: '2.6'
+      - name: Smoke test
+        run: opam exec -- smoke_test/run.sh
+      - name: Chaos test
+        run: opam exec -- chaos_test/run.sh
 
