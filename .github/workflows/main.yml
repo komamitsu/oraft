@@ -5,36 +5,28 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ocaml-compiler:
+          - ocaml-base-compiler.4.09.0
     steps:
-    - uses: actions/checkout@v2
-    - name: Install packages
-      run: |
-        sudo apt update
-        sudo apt install -y make patch curl ocaml-nox m4 unzip pkg-config libgmp-dev bubblewrap tzdata netbase
-    - name: Install Opam
-      run: |
-        sudo curl -L -o /usr/local/bin/opam https://github.com/ocaml/opam/releases/download/2.0.6/opam-2.0.6-x86_64-linux
-        sudo chmod +x /usr/local/bin/opam
-    - name: Restore Opam cache
-      id: cache-opam
-      uses: actions/cache@v1
-      with:
-        path: ~/.opam
-        key: ${{ runner.os }}-opam-${{ hashFiles('oraft.opam') }}
-    - name: Setup Opam and dependencies
-      run: |
-        opam init --bare --disable-sandboxing
-        [[ $(opam switch show) != '4.09.0' ]] && opam switch create 4.09.0 ocaml-base-compiler.4.09.0
-        opam install . -y --deps-only --with-test
-    - name: Unit test
-      run: opam exec -- dune runtest
-    - name: Build Oraft
-      run: opam exec -- dune build
-    - uses: actions/setup-ruby@v1
-      with:
-        ruby-version: '2.6'
-    - name: Smoke test
-      run: opam exec -- smoke_test/run.sh
-    - name: Chaos test
-      run: opam exec -- chaos_test/run.sh
+      - uses: actions/checkout@v2
+      - name: Use OCaml ${{ matrix.ocaml-compiler }}
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          dune-cache: true
+      - name: Install dependencies for testing
+        run: opam install --deps-only --with-test .
+      - name: Unit test
+        run: opam exec -- dune runtest
+      - name: Build Oraft
+        run: opam exec -- dune build
+      - uses: actions/setup-ruby@v1
+        with:
+          ruby-version: '2.6'
+      - name: Smoke test
+        run: opam exec -- smoke_test/run.sh
+      - name: Chaos test
+        run: opam exec -- chaos_test/run.sh
 
