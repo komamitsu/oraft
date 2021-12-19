@@ -12,6 +12,6 @@ popd
 
 pushd $root_dir
 export DOCKER_CONF_DIR=./chaos_test/docker
-docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml up
+docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml up -d
 popd
 

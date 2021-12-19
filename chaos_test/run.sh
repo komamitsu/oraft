@@ -9,11 +9,15 @@ wait_after_launch=30
 
 pushd $script_dir
 ./docker/build_cluster.sh
-./docker/run_cluster.sh &
-pid_of_cluster=$!
+./docker/start_cluster.sh
 popd
 
-trap "kill $pid_of_cluster" EXIT
+stop_cluster () {
+    pushd $script_dir
+    ./docker/stop_cluster.sh
+    popd
+}
+trap stop_cluster EXIT
 
 sleep $wait_after_launch
 

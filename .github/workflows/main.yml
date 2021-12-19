@@ -29,4 +29,9 @@ jobs:
         run: opam exec -- smoke_test/run.sh
       - name: Chaos test
         run: opam exec -- chaos_test/run.sh
-
+      - name: Archive the chaos test logs and status
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: chaos-test-logs
+          path: chaos_test/docker/oraft-*
