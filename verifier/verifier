@@ -71,8 +71,10 @@ class Verifier
   end
 
   def throw_exception(msg)
-    $logger.error(msg)
-    raise msg
+    ex = Exception.new(msg)
+    $logger.error(ex)
+    STDOUT.flush
+    raise ex
   end
 
   def send_command(command, client = nil)
