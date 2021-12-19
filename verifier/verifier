@@ -70,6 +70,11 @@ class Verifier
     sleep([init_wait * (retry_factor ** retry_count), max_wait].min * (1.1 - Random.rand(0.2)))
   end
 
+  def throw_exception(msg)
+    $logger.error(msg)
+    raise msg
+  end
+
   def send_command(command, client = nil)
     RETRY.times.each do |i|
       client ||= @clients[Random.rand(5)]
@@ -94,14 +99,14 @@ class Verifier
 
       case response.status
       when 0...200
-        raise "Unexpected response: response=#{response}, command='#{command}', error=#{response.body}"
+        throw_exception("Unexpected response: response=#{response}, command='#{command}', error=#{response.body}")
       when 200...300
         $logger.debug "Success! command='#{command}'"
         return response.body
       when 400
-        raise "Bad Request: command='#{command}', error=#{response.body}"
+        throw_exception("Bad Request: command='#{command}', error=#{response.body}")
       when 404
-        raise "Not Found: command='#{command}', error=#{response.body}"
+        throw_exception("Not Found: command='#{command}', error=#{response.body}")
       when 409
         $logger.warn "Conflict: command='#{command}', error=#{response.body}"
         # Conflict
@@ -113,7 +118,7 @@ class Verifier
       end
     end
 
-    raise "Retry over (HTTP response): command='#{command}'"
+    throw_exception("Retry over (HTTP response): command='#{command}'")
   end
 
   def key(i)
@@ -134,7 +139,7 @@ class Verifier
       retry_count = 0
       loop do
         if retry_count >= RETRY
-          raise "Retry over (CAS): i='#{i}'"
+          throw_exception("Retry over (CAS): i='#{i}'")
         end
 
         k = key(i)
