@@ -104,7 +104,7 @@ let send_request t i ~request_json ~entries ~prev_log_index =
            * - If RPC request or response contains term T > currentTerm:
            *   set currentTerm = T, convert to follower (§5.1)
            *)
-          if PersistentState.detect_new_leader persistent_state ~logger:t.logger
+          if PersistentState.detect_newer_term persistent_state ~logger:t.logger
                ~other_term:param.term
           then t.should_step_down <- true;
           Ok (Params.APPEND_ENTRIES_RESPONSE param)
@@ -243,7 +243,7 @@ let request_handlers t =
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_new_leader:(fun () -> t.should_step_down <- true)
+            ~cb_newer_term:(fun () -> t.should_step_down <- true)
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
@@ -259,7 +259,7 @@ let request_handlers t =
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_new_leader:(fun () -> t.should_step_down <- true)
+            ~cb_newer_term:(fun () -> t.should_step_down <- true)
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
@@ -291,7 +291,8 @@ let append_entries_thread t ~server_stopper =
 
 
 let run t () =
-  Logger.info t.logger "### Leader: Start ###";
+  Logger.info t.logger @@
+    Printf.sprintf "### Leader: Start (term:%d) ###" @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
   let server, server_stopper =
