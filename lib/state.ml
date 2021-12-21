@@ -55,12 +55,15 @@ module PersistentState = struct
     save t
 
 
-  let detect_new_leader t ~logger ~other_term =
+  let detect_newer_term t ~logger ~other_term =
     if other_term > t.current_term
     then (
       Logger.info logger
-        (sprintf "Detected new leader's term: %d, state.term: %d" other_term
+        (sprintf "Detected newer term: %d, state.term: %d. Stepping down" other_term
            t.current_term);
+      update_current_term t ~term:other_term;
+      t.voted_for <- None;
+      save t;
       true
     )
     else false

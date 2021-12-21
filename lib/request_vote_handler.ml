@@ -10,33 +10,38 @@ open State
  *    least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
  *)
 
-let request_vote ~state ~logger ~cb_new_leader
+let request_vote ~state ~logger ~cb_newer_term
     ~(param : Params.request_vote_request) =
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let last_log_index = PersistentLog.last_index persistent_log in
   let last_log = PersistentLog.get persistent_log last_log_index in
   (* Reply false if term < currentTerm (§5.1) *)
-  if PersistentState.detect_old_leader persistent_state ~logger
-       ~other_term:param.term
+  if PersistentState.detect_old_leader persistent_state ~logger ~other_term:param.term
   then false
-  else if PersistentState.detect_new_leader persistent_state ~logger
-            ~other_term:param.term
-  then (
-    PersistentState.update_current_term persistent_state ~term:param.term;
-    cb_new_leader ();
-    true
-  )
   else (
+    if PersistentState.detect_newer_term persistent_state ~logger ~other_term:param.term
+    then (
+      cb_newer_term ()
+    );
+
     (* If votedFor is null or candidateId, and candidate’s log is at
      * least as up-to-date as receiver’s log, grant vote (§5.2, §5.4) *)
     let up_to_date_as_receiver_log =
-      param.last_log_index >= last_log_index
-      &&
       match last_log with
-      | Some x -> param.last_log_term = x.term
+      | Some x -> param.last_log_index > last_log_index ||
+          param.last_log_index = last_log_index && param.last_log_term = x.term
       | None -> true
     in
+    Logger.info logger
+      (Printf.sprintf
+        "RequestVote's log info is up-to-date? %B (param: {term: %d, index: %d}, last_log: {term: %d, index: %d})"
+        up_to_date_as_receiver_log
+        param.last_log_term
+        param.last_log_index
+        last_log_index
+        (match last_log with Some x -> x.term | None -> -1));
+
     match PersistentState.voted_for persistent_state with
     | Some v when param.candidate_id = v -> up_to_date_as_receiver_log
     | Some _ -> false
@@ -44,10 +49,10 @@ let request_vote ~state ~logger ~cb_new_leader
   )
 
 
-let handle ~state ~logger ~cb_valid_request ~cb_new_leader
+let handle ~state ~logger ~cb_valid_request ~cb_newer_term
     ~(param : Params.request_vote_request) =
   let persistent_state = state.persistent_state in
-  let result = request_vote ~state ~logger ~cb_new_leader ~param in
+  let result = request_vote ~state ~logger ~cb_newer_term ~param in
   if result
   then (
     cb_valid_request ();

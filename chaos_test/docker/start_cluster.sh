@@ -6,8 +6,8 @@ script_dir=$(dirname $0)
 root_dir=$script_dir/../..
 
 pushd $script_dir
-rm -f ./oraft-*/oraft.log
-rm -rf ./oraft-*/state/
+sudo rm -f ./oraft-*/oraft.log
+sudo rm -rf ./oraft-*/state/
 popd
 
 pushd $root_dir

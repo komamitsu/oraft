@@ -1,6 +1,7 @@
 open Core
 open Lwt
 open Base
+open State
 
 (** Followers (§5.2):
   * - Respond to RPCs from candidates and leaders
@@ -19,6 +20,7 @@ type t = {
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
+  mutable next_mode : mode;
 }
 
 let init ~conf ~apply_log ~state =
@@ -29,6 +31,7 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level;
     apply_log;
     state;
+    next_mode = CANDIDATE
   }
 
 
@@ -51,7 +54,7 @@ let request_handlers t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_new_leader:(fun () -> ())
+            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
@@ -69,14 +72,14 @@ let request_handlers t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_new_leader:(fun () -> ())
+            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
             ~param:x
       | _ -> failwith "Unexpected state" );
   handlers
 
 
 let run t () =
-  Logger.info t.logger "### Follower: Start ###";
+  Logger.info t.logger @@ Printf.sprintf "### Follower: Start (term:%d) ###" @@ PersistentState.current_term t.state.persistent_state;
   State.log t.state ~logger:t.logger;
   let election_timer =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
@@ -90,4 +93,4 @@ let run t () =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return CANDIDATE
+  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return t.next_mode

@@ -20,17 +20,17 @@ open State
 
 let append_entries ~(conf : Conf.t) ~logger ~state
     ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
-    ~cb_valid_request ~cb_new_leader =
+    ~cb_valid_request ~cb_newer_term =
   cb_valid_request ();
   VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let volatile_state = state.volatile_state in
-  if PersistentState.detect_new_leader state.persistent_state ~logger
+  if PersistentState.detect_newer_term state.persistent_state ~logger
        ~other_term:param.term
   then (
     PersistentState.update_current_term state.persistent_state ~term:param.term;
-    cb_new_leader ()
+    cb_newer_term ()
   );
   (* If leaderCommit > commitIndex,
    * set commitIndex = min(leaderCommit, index of last new entry) *)
@@ -62,7 +62,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       apply_log ~node_id:conf.node_id ~log_index:log.index ~log_data:log.data)
 
 
-let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_new_leader
+let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
     ~(param : Params.append_entries_request) =
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
@@ -89,7 +89,7 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_new_leader
     )
     else (
       append_entries ~conf ~logger ~state ~param ~apply_log ~cb_valid_request
-        ~cb_new_leader;
+        ~cb_newer_term;
       State.log state ~logger;
       true
     )
