@@ -39,8 +39,8 @@ let request_vote ~state ~logger ~cb_newer_term
         up_to_date_as_receiver_log
         param.last_log_term
         param.last_log_index
-        last_log_index
-        (match last_log with Some x -> x.term | None -> -1));
+        (match last_log with Some x -> x.term | None -> -1)
+        last_log_index);
 
     match PersistentState.voted_for persistent_state with
     | Some v when param.candidate_id = v -> up_to_date_as_receiver_log
