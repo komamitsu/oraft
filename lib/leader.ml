@@ -293,6 +293,7 @@ let append_entries_thread t ~server_stopper =
 let run t () =
   VolatileState.update_leader_id
     t.state.common.volatile_state ~logger:t.logger t.conf.node_id;
+  PersistentState.set_voted_for t.state.common.persistent_state ~logger:t.logger ~voted_for:(Some t.conf.node_id);
   Logger.info t.logger @@
     Printf.sprintf "### Leader: Start (term:%d) ###" @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;

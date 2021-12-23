@@ -104,6 +104,8 @@ module VolatileState : sig
   val leader_id : t -> int option
 
   val update_leader_id : t -> logger:Logger.t -> int -> unit
+
+  val reset_leader_id : t -> logger:Logger.t -> unit
 end
 
 (** Volatile state on leaders:

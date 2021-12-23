@@ -300,6 +300,10 @@ module VolatileState = struct
       t.leader_id <- Some leader_id;
       Logger.info logger (sprintf "Leader ID is changed to %d" leader_id)
     )
+
+  let reset_leader_id t ~logger =
+    t.leader_id <- None;
+    Logger.info logger (sprintf "Leader ID is reset")
 end
 
 (* Volatile state on leaders:

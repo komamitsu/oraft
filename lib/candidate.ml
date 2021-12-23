@@ -168,13 +168,13 @@ let next_mode t =
 
 
 let run t () =
+  VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   let persistent_state = t.state.persistent_state in
   (* Increment currentTerm *)
   PersistentState.increment_current_term persistent_state;
+  PersistentState.set_voted_for persistent_state ~logger:t.logger ~voted_for:(Some t.conf.node_id);
   Logger.info t.logger @@ Printf.sprintf "### Candidate: Start (term:%d) ###" @@ PersistentState.current_term persistent_state;
   (* Vote for self *)
-  PersistentState.set_voted_for persistent_state ~logger:t.logger
-    ~voted_for:(Some t.conf.node_id);
   State.log t.state ~logger:t.logger;
   (* Reset election timer *)
   let election_timer =
