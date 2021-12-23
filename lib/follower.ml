@@ -55,6 +55,7 @@ let request_handlers t ~election_timer =
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
+            ~handle_same_term_as_newer:false
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
@@ -79,6 +80,8 @@ let request_handlers t ~election_timer =
 
 
 let run t () =
+  VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
+  PersistentState.set_voted_for t.state.persistent_state ~logger:t.logger ~voted_for:None;
   Logger.info t.logger @@ Printf.sprintf "### Follower: Start (term:%d) ###" @@ PersistentState.current_term t.state.persistent_state;
   State.log t.state ~logger:t.logger;
   let election_timer =

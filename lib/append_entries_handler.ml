@@ -20,18 +20,20 @@ open State
 
 let append_entries ~(conf : Conf.t) ~logger ~state
     ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
-    ~cb_valid_request ~cb_newer_term =
-  cb_valid_request ();
+    ~cb_newer_term ~handle_same_term_as_newer =
   VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let volatile_state = state.volatile_state in
   if PersistentState.detect_newer_term state.persistent_state ~logger
        ~other_term:param.term
-  then (
-    PersistentState.update_current_term state.persistent_state ~term:param.term;
-    cb_newer_term ()
-  );
+  then cb_newer_term ()
+  else if handle_same_term_as_newer &&
+    PersistentState.detect_same_term state.persistent_state ~logger
+        ~other_term:param.term
+  then cb_newer_term ()
+  ;
+
   (* If leaderCommit > commitIndex,
    * set commitIndex = min(leaderCommit, index of last new entry) *)
   if VolatileState.detect_higher_commit_index volatile_state ~logger
@@ -62,11 +64,13 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       apply_log ~node_id:conf.node_id ~log_index:log.index ~log_data:log.data)
 
 
-let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
+let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
+    ~cb_newer_term ~handle_same_term_as_newer
     ~(param : Params.append_entries_request) =
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let stored_prev_log = PersistentLog.get persistent_log param.prev_log_index in
+  cb_valid_request ();
   let result =
     if PersistentState.detect_old_leader persistent_state ~logger
          ~other_term:param.term
@@ -84,12 +88,10 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
            "Received a request that doesn't meet requirement.\nparam:%s,\nstate:%s"
            (Params.show_append_entries_request param)
            (PersistentLog.show persistent_log));
-      cb_valid_request ();
       false
     )
     else (
-      append_entries ~conf ~logger ~state ~param ~apply_log ~cb_valid_request
-        ~cb_newer_term;
+      append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term ~handle_same_term_as_newer;
       State.log state ~logger;
       true
     )

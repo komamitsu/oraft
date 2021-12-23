@@ -101,7 +101,7 @@ class Verifier
 
       case response.status
       when 0...200
-        throw_exception("Unexpected response: response=#{response}, command='#{command}', error=#{response.body}")
+        throw_exception("Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
       when 200...300
         $logger.debug "Success! command='#{command}'"
         return response.body
@@ -114,7 +114,7 @@ class Verifier
         # Conflict
         return nil
       else # >= 500
-        $logger.warn "Temporary error: command='#{command}', error=#{response.body}"
+        $logger.warn "Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
         wait(0.1, 2, 1.5, i)
         next
       end

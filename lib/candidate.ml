@@ -37,6 +37,10 @@ let init ~conf ~apply_log ~state =
     next_mode = None;
   }
 
+let stepdown t ~election_timer =
+  t.next_mode <- Some FOLLOWER;
+  Timer.stop election_timer;
+  ()
 
 let request_vote t ~election_timer =
   let persistent_state = t.state.persistent_state in
@@ -67,8 +71,7 @@ let request_vote t ~election_timer =
             if PersistentState.detect_newer_term persistent_state
                  ~logger:t.logger ~other_term:param.term
             then (
-              t.next_mode <- Some FOLLOWER;
-              Timer.stop election_timer
+              stepdown t ~election_timer
             );
 
             Ok (Params.REQUEST_VOTE_RESPONSE param)
@@ -95,10 +98,8 @@ let request_handlers t ~election_timer =
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
               (* If AppendEntries RPC received from new leader: convert to follower *)
-            ~cb_newer_term:(fun () ->
-              t.next_mode <- Some FOLLOWER;
-              Timer.stop election_timer
-            )
+            ~cb_newer_term:(fun () -> stepdown t ~election_timer)
+            ~handle_same_term_as_newer:true
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
@@ -115,10 +116,7 @@ let request_handlers t ~election_timer =
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1)
                *)
-            ~cb_newer_term:(fun () ->
-              t.next_mode <- Some FOLLOWER;
-              Timer.stop election_timer
-            )
+            ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~param:x
       | _ -> failwith "Unexpected state" );
   handlers
@@ -170,13 +168,13 @@ let next_mode t =
 
 
 let run t () =
+  VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   let persistent_state = t.state.persistent_state in
   (* Increment currentTerm *)
   PersistentState.increment_current_term persistent_state;
+  PersistentState.set_voted_for persistent_state ~logger:t.logger ~voted_for:(Some t.conf.node_id);
   Logger.info t.logger @@ Printf.sprintf "### Candidate: Start (term:%d) ###" @@ PersistentState.current_term persistent_state;
   (* Vote for self *)
-  PersistentState.set_voted_for persistent_state ~logger:t.logger
-    ~voted_for:(Some t.conf.node_id);
   State.log t.state ~logger:t.logger;
   (* Reset election timer *)
   let election_timer =
