@@ -5,6 +5,7 @@ val handle :
   apply_log:Base.apply_log ->
   cb_valid_request:(unit -> unit) ->
   cb_newer_term:(unit -> unit) ->
+  handle_same_term_as_newer:bool ->
   param:Params.append_entries_request ->
   (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 (** Invoked by leader to replicate log entries (§5.3); also used as

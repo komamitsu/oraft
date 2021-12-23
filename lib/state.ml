@@ -43,6 +43,20 @@ module PersistentState = struct
 
   let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
 
+  let voted_for t = t.voted_for
+
+  let set_voted_for t ~logger ~voted_for =
+    let to_string = function
+      | Some x -> "Some " ^ string_of_int x
+      | None -> "None"
+    in
+    Logger.info logger
+      (sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
+         (to_string voted_for));
+    t.voted_for <- voted_for;
+    save t
+
+
   let current_term t = t.current_term
 
   let update_current_term t ~term =
@@ -53,6 +67,18 @@ module PersistentState = struct
   let increment_current_term t =
     t.current_term <- t.current_term + 1;
     save t
+
+
+  let detect_same_term t ~logger ~other_term =
+    if other_term = t.current_term
+    then (
+      Logger.info logger
+        (sprintf "Detected the same term: %d, state.term: %d. Stepping down" other_term
+           t.current_term);
+      set_voted_for t ~logger ~voted_for:None;
+      true
+    )
+    else false
 
 
   let detect_newer_term t ~logger ~other_term =
@@ -79,19 +105,6 @@ module PersistentState = struct
     )
     else false
 
-
-  let voted_for t = t.voted_for
-
-  let set_voted_for t ~logger ~voted_for =
-    let to_string = function
-      | Some x -> "Some " ^ string_of_int x
-      | None -> "None"
-    in
-    Logger.info logger
-      (sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
-         (to_string voted_for));
-    t.voted_for <- voted_for;
-    save t
 end
 
 (* Persistent log state *)

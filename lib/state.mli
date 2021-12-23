@@ -21,6 +21,8 @@ module PersistentState : sig
 
   val increment_current_term : t -> unit
 
+  val detect_same_term : t -> logger:Logger.t -> other_term:int -> bool
+
   val detect_newer_term : t -> logger:Logger.t -> other_term:int -> bool
 
   val detect_old_leader : t -> logger:Logger.t -> other_term:int -> bool

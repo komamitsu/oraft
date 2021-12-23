@@ -244,6 +244,7 @@ let request_handlers t =
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
             ~cb_newer_term:(fun () -> t.should_step_down <- true)
+            ~handle_same_term_as_newer:false
             ~param:x
       | _ -> failwith "Unexpected state" );
   Stdlib.Hashtbl.add handlers
