@@ -62,7 +62,7 @@ class Verifier
       a[x] = Error.new
       a
     }
-    @table = {}
+    @expected_kvs = {}
   end
 
   def wait(init_wait, retry_factor, max_wait, retry_count)
@@ -131,7 +131,7 @@ class Verifier
     @key_size.times.each do |i|
       k = key(i)
       send_command("SET #{k} 0")
-      @table[k] = 0
+      @expected_kvs[k] = 0
     end
   end
 
@@ -152,7 +152,9 @@ class Verifier
         $logger.debug "[#{i}] diff=#{diff}"
 
         if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
-          @table[k] += diff
+          $logger.debug "[#{i}] updating #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
+          @expected_kvs[k] += diff
+          $logger.debug "[#{i}] updated #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
           break
         end
 
@@ -171,7 +173,7 @@ class Verifier
     @key_size.times.each do |i|
       k = key(i)
       puts "Key: #{k}"
-      expected = @table[k]
+      expected = @expected_kvs[k]
       @clients.each do |client|
         v = Integer(send_command("GET #{k}", client))
         if v == expected
