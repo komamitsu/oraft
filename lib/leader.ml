@@ -57,6 +57,11 @@ let init ~conf ~apply_log ~state =
   }
 
 
+let step_down t =
+  Logger.info t.logger "Stepping down";
+  t.should_step_down <- true
+
+
 let prepare_entries t i =
   let leader_state = t.state.volatile_state_on_leader in
   let persistent_log = t.state.common.persistent_log in
@@ -71,16 +76,18 @@ let prepare_entries t i =
     List.init (last_log_index - prev_log_index) ~f:(fun i ->
         let idx = i + prev_log_index + 1 in
         match PersistentLog.get persistent_log idx with
-        | Some x -> x
-        | None ->
+        | Some x -> Some x
+        | None -> (
             let msg =
               Printf.sprintf "Can't find the log: i:%d, prev_log_index:%d" i
                 prev_log_index
             in
             Logger.error t.logger msg;
-            failwith msg)
+            None
+        )
+    )
   in
-  (prev_log_index, prev_log_term, entries)
+  (prev_log_index, prev_log_term, List.filter_map ~f:(fun x -> x) entries)
 
 
 let send_request t i ~request_json ~entries ~prev_log_index =
@@ -106,7 +113,7 @@ let send_request t i ~request_json ~entries ~prev_log_index =
            *)
           if PersistentState.detect_newer_term persistent_state ~logger:t.logger
                ~other_term:param.term
-          then t.should_step_down <- true;
+          then step_down t;
           Ok (Params.APPEND_ENTRIES_RESPONSE param)
       | Ok _ ->
           (* If AppendEntries fails because of log inconsistency:
@@ -150,39 +157,43 @@ let request_append_entry t i =
 
 
 let append_entries t =
-  if t.should_step_down then failwith "Retiring";
-  let persistent_log = t.state.common.persistent_log in
-  let volatile_state = t.state.common.volatile_state in
-  let last_log_index = PersistentLog.last_index persistent_log in
-  ( Lwt_list.mapi_p (request_append_entry t) (Conf.peer_nodes t.conf)
-  >>= fun results ->
-    Lwt_list.fold_left_s
-      (fun a result -> Lwt.return (if Option.is_some result then a + 1 else a))
-      1 (* Implicitly voting for myself *) results )
-  >>= fun n ->
-  let majority = Conf.majority_of_nodes t.conf in
-  Logger.debug t.logger
-    (Printf.sprintf
-       "Received responses of append_entries. received:%d, majority:%d" n
-       majority);
-  let result =
-    if (* If there exists an N such that N > commitIndex, a majority
-          * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
-          * set commitIndex = N (§5.3, §5.4). *)
-       n >= Conf.majority_of_nodes t.conf
-    then (
-      VolatileState.update_commit_index volatile_state last_log_index;
-      VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-          let log = PersistentLog.get_exn persistent_log i in
-          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
-            ~log_data:log.data);
-      true
-    )
-    else false
-  in
-  t.last_request_ts <- Some (Time_ns.now ());
-  Lwt.return result
-
+  if t.should_step_down then (
+    Logger.info t.logger "Avoiding sending append_entries since it's stepping down";
+    Lwt.return true
+  )
+  else (
+    let persistent_log = t.state.common.persistent_log in
+    let volatile_state = t.state.common.volatile_state in
+    let last_log_index = PersistentLog.last_index persistent_log in
+    ( Lwt_list.mapi_p (request_append_entry t) (Conf.peer_nodes t.conf)
+    >>= fun results ->
+      Lwt_list.fold_left_s
+        (fun a result -> Lwt.return (if Option.is_some result then a + 1 else a))
+        1 (* Implicitly voting for myself *) results )
+    >>= fun n ->
+    let majority = Conf.majority_of_nodes t.conf in
+    Logger.debug t.logger
+      (Printf.sprintf
+        "Received responses of append_entries. received:%d, majority:%d" n
+        majority);
+    let result =
+      if (* If there exists an N such that N > commitIndex, a majority
+            * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+            * set commitIndex = N (§5.3, §5.4). *)
+        n >= Conf.majority_of_nodes t.conf
+      then (
+        VolatileState.update_commit_index volatile_state last_log_index;
+        VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+            let log = PersistentLog.get_exn persistent_log i in
+            t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+              ~log_data:log.data);
+        true
+      )
+      else false
+    in
+    t.last_request_ts <- Some (Time_ns.now ());
+    Lwt.return result
+  )
 
 let heartbeat_span_sec t =
   let configured =
@@ -226,6 +237,11 @@ let handle_client_command t ~(param : Params.client_command_request) =
 
 
 let request_handlers t =
+  let unexpected_request = fun () -> (
+    Logger.error t.logger "Unexpected request";
+    Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
+  )
+  in
   let handlers = Stdlib.Hashtbl.create 3 in
   let open Params in
   Stdlib.Hashtbl.add handlers
@@ -242,10 +258,11 @@ let request_handlers t =
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_newer_term:(fun () -> t.should_step_down <- true)
+            ~cb_newer_term:(fun () -> step_down t)
             ~handle_same_term_as_newer:false
             ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request ()
+);
   Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
@@ -259,9 +276,9 @@ let request_handlers t =
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
                *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_newer_term:(fun () -> t.should_step_down <- true)
+            ~cb_newer_term:(fun () -> step_down t)
             ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request ());
   Stdlib.Hashtbl.add handlers
     (`POST, "/client_command")
     ( (fun json ->
@@ -270,22 +287,45 @@ let request_handlers t =
         | Error _ as e -> e),
       function
       | CLIENT_COMMAND_REQUEST x -> handle_client_command t ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request ());
   handlers
 
 
 let append_entries_thread t ~server_stopper =
+  State.log_leader t.state ~logger:t.logger;
+  let n = 20 in
+  let sleep = heartbeat_span_sec t /. (float_of_int n) in
+  let i = ref 0 in
   let rec loop () =
-    State.log_leader t.state ~logger:t.logger;
-    Lwt_mutex.with_lock lock (fun () -> append_entries t) >>= fun _ ->
-    let sleep = heartbeat_span_sec t in
-    Lwt_unix.sleep sleep >>= fun () ->
     if t.should_step_down
     then (
+      Logger.debug t.logger "Stopping server";
       Lwt.wakeup server_stopper ();
+      Logger.debug t.logger "Stopped server";
       Lwt.return ()
     )
-    else loop ()
+    else (
+      let proc = if !i = 0 || !i >= n then (
+        State.log_leader t.state ~logger:t.logger;
+        i := 1;
+        Lwt_mutex.with_lock lock (fun () ->
+          (* TODO: The result of append_entries can be ignored? *)
+          append_entries t >>= fun _ -> Lwt.return ()
+        )
+      )
+      else (
+        i := !i + 1;
+        Lwt.return ()
+      )
+      in
+      proc >>= fun () -> (
+        Logger.debug t.logger "Sleeping";
+        Lwt_unix.sleep sleep
+      ) >>= fun () -> (
+        Logger.debug t.logger "Got up";
+        loop ()
+      )
+    )
   in
   loop ()
 

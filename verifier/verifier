@@ -77,22 +77,23 @@ class Verifier
     raise ex
   end
 
-  def send_command(command, client = nil)
+  def send_command(request_id, command, client = nil)
     RETRY.times.each do |i|
       client ||= @clients[Random.rand(5)]
       error = @errors[client] 
       if error.stalled?
-        $logger.warn "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
+        $logger.warn "[#{request_id}] This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
         client = nil
         next
       end
 
-      $logger.debug "client=#{client.url_prefix}, command='#{command}'"
+      $logger.debug "[#{request_id}] client=#{client.url_prefix}, command='#{command}'"
 
       begin
         response = client.post("/command", command)
         error.reset
       rescue Faraday::ConnectionFailed, Faraday::TimeoutError
+        $logger.warn "[#{request_id}] Network error: command='#{command}', exception=#{$!}"
         client = nil
         error.incr
         wait(0.1, 2, 1.5, i)
@@ -101,26 +102,26 @@ class Verifier
 
       case response.status
       when 0...200
-        throw_exception("Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
+        throw_exception("[#{request_id}] Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
       when 200...300
-        $logger.debug "Success! command='#{command}'"
+        $logger.debug "[#{request_id}] Success! command='#{command}'"
         return response.body
       when 400
-        throw_exception("Bad Request: command='#{command}', error=#{response.body}")
+        throw_exception("[#{request_id}] Bad Request: command='#{command}', error=#{response.body}")
       when 404
-        throw_exception("Not Found: command='#{command}', error=#{response.body}")
+        throw_exception("#{request_id}] Not Found: command='#{command}', error=#{response.body}")
       when 409
-        $logger.warn "Conflict: command='#{command}', error=#{response.body}"
+        $logger.warn "[#{request_id}] Conflict: command='#{command}', error=#{response.body}"
         # Conflict
         return nil
       else # >= 500
-        $logger.warn "Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
+        $logger.warn "[#{request_id}] Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
         wait(0.1, 2, 1.5, i)
         next
       end
     end
 
-    throw_exception("Retry over (HTTP response): command='#{command}'")
+    throw_exception("[#{request_id}] Retry over (HTTP response): command='#{command}'")
   end
 
   def key(i)
@@ -130,7 +131,7 @@ class Verifier
   def initialize_values
     @key_size.times.each do |i|
       k = key(i)
-      send_command("SET #{k} 0")
+      send_command("set-#{i}", "SET #{k} 0")
       @expected_kvs[k] = 0
     end
   end
@@ -140,21 +141,22 @@ class Verifier
       sleep(@wait_ms / 1000.0)
       retry_count = 0
       loop do
+        label = "update-#{i}-#{retry_count}"
         if retry_count >= RETRY
-          throw_exception("Retry over (CAS): i='#{i}'")
+          throw_exception("[#{label}] Retry over (CAS): i='#{i}'")
         end
 
         k = key(i)
-        v = send_command("GET #{k}")
+        v = send_command(label, "GET #{k}")
         diff = Random.rand(100000)
         next_v = Integer(v) + diff
 
-        $logger.debug "[#{i}] diff=#{diff}"
+        $logger.debug "[#{label}] diff=#{diff}"
 
-        if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
-          $logger.debug "[#{i}] updating #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
+        if send_command(label, "CAS #{k} #{v} #{next_v}") || Integer(send_command(label, "GET #{k}")) == next_v
+          $logger.debug "[#{label}] updating #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
           @expected_kvs[k] += diff
-          $logger.debug "[#{i}] updated #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
+          $logger.debug "[#{label}] updated #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
           break
         end
 
@@ -174,8 +176,8 @@ class Verifier
       k = key(i)
       puts "Key: #{k}"
       expected = @expected_kvs[k]
-      @clients.each do |client|
-        v = Integer(send_command("GET #{k}", client))
+      @clients.each_with_index do |client, j|
+        v = Integer(send_command("verify-#{i}-#{j}", "GET #{k}", client))
         if v == expected
           puts "Success: expected=#{expected}, actual=#{v}"
         else
