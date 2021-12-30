@@ -159,7 +159,7 @@ let request_append_entry t i =
 let append_entries t =
   if t.should_step_down then (
     Logger.info t.logger "Avoiding sending append_entries since it's stepping down";
-    Lwt.return true
+    Lwt.return false
   )
   else (
     let persistent_log = t.state.common.persistent_log in
@@ -318,13 +318,7 @@ let append_entries_thread t ~server_stopper =
         Lwt.return ()
       )
       in
-      proc >>= fun () -> (
-        Logger.debug t.logger "Sleeping";
-        Lwt_unix.sleep sleep
-      ) >>= fun () -> (
-        Logger.debug t.logger "Got up";
-        loop ()
-      )
+      proc >>= fun () -> Lwt_unix.sleep sleep >>= fun () -> loop ()
     )
   in
   loop ()
