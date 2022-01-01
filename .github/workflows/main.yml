@@ -27,6 +27,12 @@ jobs:
           ruby-version: '2.6'
       - name: Smoke test
         run: opam exec -- smoke_test/run.sh
+      - name: Archive the smoke test logs and status
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: smoke-test-logs
+          path: example/oraft-*
       - name: Chaos test
         run: opam exec -- chaos_test/run.sh
       - name: Archive the chaos test logs and status
