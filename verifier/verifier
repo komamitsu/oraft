@@ -116,6 +116,7 @@ class Verifier
         return nil
       else # >= 500
         $logger.warn "[#{request_id}] Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
+        client = nil
         wait(0.1, 2, 1.5, i)
         next
       end
