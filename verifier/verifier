@@ -92,7 +92,7 @@ class Verifier
       begin
         response = client.post("/command", command)
         error.reset
-      rescue Faraday::ConnectionFailed, Faraday::TimeoutError
+      rescue Faraday::ConnectionFailed, Faraday::TimeoutError, Net::ReadTimeout
         $logger.warn "[#{request_id}] Network error: command='#{command}', exception=#{$!}"
         client = nil
         error.incr
@@ -104,7 +104,7 @@ class Verifier
       when 0...200
         throw_exception("[#{request_id}] Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
       when 200...300
-        $logger.debug "[#{request_id}] Success! command='#{command}'"
+        $logger.debug "[#{request_id}] Success! command='#{command}', result='#{response.body}'"
         return response.body
       when 400
         throw_exception("[#{request_id}] Bad Request: command='#{command}', error=#{response.body}")
