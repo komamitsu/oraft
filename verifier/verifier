@@ -141,6 +141,7 @@ class Verifier
     Parallel.each(0...@count, :in_threads => @concurrency) do |i|
       sleep(@wait_ms / 1000.0)
       retry_count = 0
+      diff = Random.rand(100000)
       loop do
         label = "update-#{i}-#{retry_count}"
         if retry_count >= RETRY
@@ -149,7 +150,6 @@ class Verifier
 
         k = key(i)
         v = send_command(label, "GET #{k}")
-        diff = Random.rand(100000)
         next_v = Integer(v) + diff
 
         $logger.debug "[#{label}] diff=#{diff}"
@@ -211,7 +211,7 @@ class Verifier
 end
 
 if $0 == __FILE__
-  if Verifier.new(8, 16, 4096, 200).run
+  if Verifier.new(8, 16, 4096, 100).run
     exit 0
   else
     exit 1
