@@ -74,4 +74,15 @@ services:
     - oraft-3
     - oraft-4
     - oraft-5
+  chaos-kill:
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level info --random --interval 13s netem --tc-image gaiadocker/iproute2 --duration 4s delay re2:oraft-*"
+    depends_on:
+    - oraft-1
+    - oraft-2
+    - oraft-3
+    - oraft-4
+    - oraft-5
 
