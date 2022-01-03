@@ -8,10 +8,10 @@
         {"id": 5, "host": "localhost", "port": 7895, "app_port": 8185}
     ],
     "log_file": "oraft.log",
-    "log_level": "DEBUG",
+    "log_level": "INFO",
     "state_dir": "state",
-    "election_timeout_millis": 200,
-    "heartbeat_interval_millis": 30,
-    "request_timeout_millis": 100
+    "election_timeout_millis": 400,
+    "heartbeat_interval_millis": 100,
+    "request_timeout_millis": 200
 }
 
