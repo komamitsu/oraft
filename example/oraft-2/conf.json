@@ -8,7 +8,7 @@
         {"id": 5, "host": "localhost", "port": 7895, "app_port": 8185}
     ],
     "log_file": "oraft.log",
-    "log_level": "INFO",
+    "log_level": "DEBUG",
     "state_dir": "state",
     "election_timeout_millis": 400,
     "heartbeat_interval_millis": 100,
