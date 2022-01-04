@@ -42,6 +42,10 @@ let stepdown t ~election_timer =
   Timer.stop election_timer;
   ()
 
+let unexpected_request t =
+  Logger.error t.logger "Unexpected request";
+  Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
+
 let request_vote t ~election_timer =
   let persistent_state = t.state.persistent_state in
   let persistent_log = t.state.persistent_log in
@@ -79,7 +83,6 @@ let request_vote t ~election_timer =
   in
   Lwt_list.map_p request (Conf.peer_nodes t.conf)
 
-
 let request_handlers t ~election_timer =
   let handlers = Stdlib.Hashtbl.create 2 in
   let open Params in
@@ -101,7 +104,7 @@ let request_handlers t ~election_timer =
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~handle_same_term_as_newer:true
             ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request t);
   Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
@@ -118,9 +121,8 @@ let request_handlers t ~election_timer =
                *)
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request t);
   handlers
-
 
 let collect_votes t ~election_timer ~vote_request =
   ( vote_request >>= fun responses ->
@@ -131,7 +133,7 @@ let collect_votes t ~election_timer ~vote_request =
             match param with
             | Params.REQUEST_VOTE_RESPONSE param ->
                 if param.vote_granted then a + 1 else a
-            | _ -> failwith "Unexpected state"
+            | _ -> (Logger.error t.logger "Unexpected request"; a)
           )
         | None -> a)
       responses
@@ -157,7 +159,6 @@ let collect_votes t ~election_timer ~vote_request =
   );
   Lwt.return ()
 
-
 let next_mode t =
   match t.next_mode with
   | Some x -> x
@@ -165,7 +166,6 @@ let next_mode t =
       Logger.error t.logger "Unexpected state";
       (* If election timeout elapses: start new election *)
       CANDIDATE
-
 
 let run t () =
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
