@@ -213,7 +213,7 @@ class Verifier
 end
 
 if $0 == __FILE__
-  if Verifier.new(8, 16, 4096, 400).run
+  if Verifier.new(8, 16, 4096, 250).run
     exit 0
   else
     exit 1
