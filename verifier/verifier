@@ -4,6 +4,7 @@ require 'logger'
 require 'parallel'
 require 'faraday'
 require 'securerandom'
+require 'optparse'
 
 $logger = Logger.new(STDOUT)
 $logger.level = Logger::DEBUG
@@ -213,7 +214,36 @@ class Verifier
 end
 
 if $0 == __FILE__
-  if Verifier.new(8, 16, 4096, 250).run
+  options = {
+    concurrency: 8,
+    key_size: 16,
+    count: 4096,
+    wait_ms: 250,
+  }
+  OptionParser.new do |opts|
+    opts.on("-C", "--concurrency CONCURRENCY", "Concurrency") do |v|
+      options[:concurrency] = Integer(v)
+    end
+
+    opts.on("-k", "--key-size KEY_SIZE", "Key size") do |v|
+      options[:key_size] = Integer(v)
+    end
+
+    opts.on("-c", "--count COUNT", "Count") do |v|
+      options[:count] = Integer(v)
+    end
+
+    opts.on("-w", "--wait-ms WAIT_MS", "Wait (ms)") do |v|
+      options[:wait_ms] = Integer(v)
+    end
+
+  end.parse!
+
+  if Verifier.new(
+      options[:concurrency],
+      options[:key_size],
+      options[:count],
+      options[:wait_ms]).run
     exit 0
   else
     exit 1
