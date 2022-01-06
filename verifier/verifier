@@ -47,7 +47,7 @@ class Error
 end
 
 class Verifier
-  RETRY = 32
+  RETRY = 128
 
   def initialize(concurrency, key_size, count, wait_ms)
     @concurrency = concurrency
@@ -56,8 +56,8 @@ class Verifier
     @wait_ms = wait_ms
     @clients = 1.upto(5).map do |i|
       Faraday.new("http://localhost:818#{i}", request: {
-        open_timeout: 0.4,
-        timeout: 0.8
+        open_timeout: 1.0,
+        timeout: 2.0
       })
     end
     @errors = @clients.inject({}) {|a, x|
