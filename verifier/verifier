@@ -210,21 +210,13 @@ class Verifier
 end
 
 if $0 == __FILE__
-=begin
-  # Ideal config...
   options = {
     concurrency: 8,
     key_size: 16,
     count: 4096,
     wait_ms: 250,
   }
-=end
-  options = {
-    concurrency: 4,
-    key_size: 16,
-    count: 1024,
-    wait_ms: 500,
-  }
+
   OptionParser.new do |opts|
     opts.on("-C", "--concurrency CONCURRENCY", "Concurrency") do |v|
       options[:concurrency] = Integer(v)
