@@ -148,19 +148,15 @@ class Verifier
         request_id = "update-#{i}"
         label = "update-#{i}-#{retry_count}"
         if retry_count >= RETRY
-          throw_exception("[#{label}] Retry over (CAS): i='#{i}'")
+          throw_exception("[#{label}] Retry over (INCR): i='#{i}'")
         end
 
         k = key(i)
-        v = send_command(label, nil, "GET #{k}")
-        next_v = Integer(v) + diff
-
         $logger.debug "[#{label}] diff=#{diff}"
 
-        if send_command(label, request_id, "CAS #{k} #{v} #{next_v}")
-          $logger.debug "[#{label}] updating #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
+        if send_command(label, request_id, "INCR #{k} #{diff}")
           @expected_kvs[k] += diff
-          $logger.debug "[#{label}] updated #{k}: expected_kvs=#{@expected_kvs[k]}, next_v=#{next_v}"
+          $logger.debug "[#{label}] updated #{k}: expected_kvs=#{@expected_kvs[k]}"
           break
         end
 

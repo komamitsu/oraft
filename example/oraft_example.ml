@@ -54,22 +54,9 @@ let kvs_incr id args =
         )
       | None -> 0
     in
-    let incremented = string_of_int (v + 1) in
+    let diff = List.nth args 1 in
+    let incremented = string_of_int (v + int_of_string(diff)) in
     Hashtbl.replace kvs k incremented;
-  )
-
-
-let kvs_cas id args =
-  exec_with_dedup "CAS" id args (fun () ->
-    let k = List.nth args 0 in
-    let expected = List.nth args 1 in
-    let v = List.nth args 2 in
-    match Hashtbl.find_opt kvs k with
-    | Some x when x = expected -> Hashtbl.replace kvs k v
-    | Some x ->
-        with_flush_stdout (fun () ->
-            Printf.printf "!!!! INVALID CAS : k=%s, expected=%s, v=%s !!!!\n" k expected x)
-    | None -> ()
   )
 
 
@@ -82,7 +69,6 @@ let oraft conf_file =
       match cmd with
       | "SET" -> kvs_set id args
       | "INCR" -> kvs_incr id args
-      | "CAS" -> kvs_cas id args
       | _ -> ())
 
 
@@ -121,21 +107,6 @@ let server port (oraft : Oraft.t) =
               oraft.post_command request_body >>= fun result ->
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
-          | "CAS" ->
-              Lwt_mutex.with_lock lock (fun () ->
-                  handle_or_proxy oraft request_body (fun () ->
-                      let k = List.nth args 0 in
-                      let expected = List.nth args 1 in
-                      match Hashtbl.find_opt kvs k with
-                      | Some x when x = expected ->
-                          oraft.post_command request_body >>= fun result ->
-                          Lwt.return
-                            ( if result
-                            then (`OK, "")
-                            else (`Internal_server_error, "")
-                            )
-                      | Some _ -> Lwt.return (`Conflict, "")
-                      | None -> Lwt.return (`Not_found, "")))
           | "GET" ->
               handle_or_proxy oraft request_body (fun () ->
                   let k = List.nth args 0 in
