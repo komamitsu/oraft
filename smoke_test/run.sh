@@ -8,9 +8,9 @@ verifier_dir=$root_dir/verifier
 
 wait_after_launch=20
 wait_for_each_op=10
-wait_until_exit=450
-verifier_count=2048
-verifier_wait_ms=400
+wait_until_exit=600
+verifier_count=4096
+verifier_wait_ms=250
 
 pushd $script_dir
 ./scenario.sh $wait_after_launch $wait_for_each_op $wait_until_exit &

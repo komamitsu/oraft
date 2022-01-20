@@ -213,8 +213,8 @@ if $0 == __FILE__
   options = {
     concurrency: 8,
     key_size: 16,
-    count: 2048,
-    wait_ms: 400,
+    count: 4096,
+    wait_ms: 250,
   }
 
   OptionParser.new do |opts|
