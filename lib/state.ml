@@ -34,12 +34,10 @@ module PersistentState = struct
       )
     | _ -> { path; current_term = 0; voted_for = None }
 
-
   let save t =
     let state = { current_term = t.current_term; voted_for = t.voted_for } in
     Out_channel.write_all t.path
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
-
 
   let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
 
@@ -56,18 +54,15 @@ module PersistentState = struct
     t.voted_for <- voted_for;
     save t
 
-
   let current_term t = t.current_term
 
   let update_current_term t ~term =
     t.current_term <- term;
     save t
 
-
   let increment_current_term t =
     t.current_term <- t.current_term + 1;
     save t
-
 
   let detect_same_term t ~logger ~other_term =
     if other_term = t.current_term
@@ -79,7 +74,6 @@ module PersistentState = struct
       true
     )
     else false
-
 
   let detect_newer_term t ~logger ~other_term =
     if other_term > t.current_term
@@ -94,7 +88,6 @@ module PersistentState = struct
     )
     else false
 
-
   let detect_old_leader t ~logger ~other_term =
     if other_term < t.current_term
     then (
@@ -104,7 +97,6 @@ module PersistentState = struct
       true
     )
     else false
-
 end
 
 (* Persistent log state *)
@@ -137,7 +129,6 @@ module PersistentLog = struct
       t.path t.last_index
       (String.concat ~sep:"\n" (List.map entries ~f:PersistentLogEntry.show))
 
-
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
     match Sys.file_exists path with
@@ -167,12 +158,10 @@ module PersistentLog = struct
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
 
-
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
     Logger.debug logger (sprintf "PersistentLog : %s" (show t))
-
 
   let get t i = List.nth t.list (i - 1)
 
@@ -185,12 +174,10 @@ module PersistentLog = struct
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
-
   let append_to_file t ~log =
     Out_channel.with_file t.path ~append:true ~f:(fun ch ->
         Out_channel.output_lines ch
           [ PersistentLogEntry.to_yojson log |> Yojson.Safe.to_string ])
-
 
   let append t ~term ~start ~entries =
     let rec update_ xs i (entries : PersistentLogEntry.t list) =
@@ -266,7 +253,6 @@ module VolatileState = struct
     )
     else false
 
-
   let last_applied t = t.last_applied
 
   let apply_logs t ~logger ~f =
@@ -341,7 +327,6 @@ module VolatileStateOnLeader = struct
            "matchIndex should monotonically increase within a term, since servers don't forget entries. But it didn't. match_index: old=%d, new=%d"
            peer.match_index x)
     else peer.match_index <- x
-
 
   let show_nth_peer t i = get t i |> show_peer
 

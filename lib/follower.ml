@@ -34,6 +34,9 @@ let init ~conf ~apply_log ~state =
     next_mode = CANDIDATE
   }
 
+let unexpected_request t =
+  Logger.error t.logger "Unexpected request";
+  Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
 
 let request_handlers t ~election_timer =
   let handlers = Stdlib.Hashtbl.create 2 in
@@ -57,7 +60,8 @@ let request_handlers t ~election_timer =
             ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
             ~handle_same_term_as_newer:false
             ~param:x
-      | _ -> failwith "Unexpected state" );
+      | _ -> unexpected_request t);
+
   Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
@@ -75,9 +79,9 @@ let request_handlers t ~election_timer =
             ~cb_valid_request:(fun () -> Timer.update election_timer)
             ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
             ~param:x
-      | _ -> failwith "Unexpected state" );
-  handlers
+      | _ -> unexpected_request t);
 
+  handlers
 
 let run t () =
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;

@@ -55,6 +55,8 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   | Some node_id ->
       let current_leader_node = Conf.peer_node conf ~node_id in
       request current_leader_node >>= fun result ->
+      Logger.debug logger
+        (Printf.sprintf "Sending command to node(%d) : %s" node_id s);
       Lwt.return
         ( match result with
         | Some (Params.CLIENT_COMMAND_RESPONSE x) -> x.success

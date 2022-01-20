@@ -10,8 +10,8 @@
     "log_file": "oraft.log",
     "log_level": "INFO",
     "state_dir": "state",
-    "election_timeout_millis": 500,
-    "heartbeat_interval_millis": 50,
+    "election_timeout_millis": 200,
+    "heartbeat_interval_millis": 30,
     "request_timeout_millis": 100
 }
 

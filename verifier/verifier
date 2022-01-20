@@ -3,6 +3,8 @@
 require 'logger'
 require 'parallel'
 require 'faraday'
+require 'securerandom'
+require 'optparse'
 
 $logger = Logger.new(STDOUT)
 $logger.level = Logger::DEBUG
@@ -45,7 +47,7 @@ class Error
 end
 
 class Verifier
-  RETRY = 32
+  RETRY = 128
 
   def initialize(concurrency, key_size, count, wait_ms)
     @concurrency = concurrency
@@ -54,15 +56,15 @@ class Verifier
     @wait_ms = wait_ms
     @clients = 1.upto(5).map do |i|
       Faraday.new("http://localhost:818#{i}", request: {
-        open_timeout: 0.4,
-        timeout: 0.8
+        open_timeout: 1.0,
+        timeout: 2.0
       })
     end
     @errors = @clients.inject({}) {|a, x|
       a[x] = Error.new
       a
     }
-    @table = {}
+    @expected_kvs = {}
   end
 
   def wait(init_wait, retry_factor, max_wait, retry_count)
@@ -77,22 +79,23 @@ class Verifier
     raise ex
   end
 
-  def send_command(command, client = nil)
+  def send_command(label, request_id, command, client = nil)
     RETRY.times.each do |i|
       client ||= @clients[Random.rand(5)]
       error = @errors[client] 
       if error.stalled?
-        $logger.warn "This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
+        $logger.warn "[#{label}] This client may be stalled. Trying another one... client=#{client.url_prefix}, command='#{command}'"
         client = nil
         next
       end
 
-      $logger.debug "client=#{client.url_prefix}, command='#{command}'"
+      $logger.debug "[#{label}] client=#{client.url_prefix}, command='#{command}'"
 
       begin
-        response = client.post("/command", command)
+        response = client.post("/command", "#{request_id || SecureRandom.uuid} #{command}")
         error.reset
-      rescue Faraday::ConnectionFailed, Faraday::TimeoutError
+      rescue Faraday::ConnectionFailed, Faraday::TimeoutError, Net::ReadTimeout
+        $logger.warn "[#{label}] Network error: command='#{command}', exception=#{$!}"
         client = nil
         error.incr
         wait(0.1, 2, 1.5, i)
@@ -101,26 +104,27 @@ class Verifier
 
       case response.status
       when 0...200
-        throw_exception("Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
+        throw_exception("[#{label}] Unexpected response: response.status=#{response.status}, command='#{command}', error=#{response.body}")
       when 200...300
-        $logger.debug "Success! command='#{command}'"
+        $logger.debug "[#{label}] Success! command='#{command}', result='#{response.body}'"
         return response.body
       when 400
-        throw_exception("Bad Request: command='#{command}', error=#{response.body}")
+        throw_exception("[#{label}] Bad Request: command='#{command}', error=#{response.body}")
       when 404
-        throw_exception("Not Found: command='#{command}', error=#{response.body}")
+        throw_exception("#{label}] Not Found: command='#{command}', error=#{response.body}")
       when 409
-        $logger.warn "Conflict: command='#{command}', error=#{response.body}"
+        $logger.warn "[#{label}] Conflict: command='#{command}', error=#{response.body}"
         # Conflict
         return nil
       else # >= 500
-        $logger.warn "Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
+        $logger.warn "[#{label}] Temporary error: response.status=#{response.status}, command='#{command}', error=#{response.body}"
+        client = nil
         wait(0.1, 2, 1.5, i)
         next
       end
     end
 
-    throw_exception("Retry over (HTTP response): command='#{command}'")
+    throw_exception("[#{label}] Retry over (HTTP response): command='#{command}'")
   end
 
   def key(i)
@@ -130,8 +134,8 @@ class Verifier
   def initialize_values
     @key_size.times.each do |i|
       k = key(i)
-      send_command("SET #{k} 0")
-      @table[k] = 0
+      send_command("set-#{i}", nil, "SET #{k} 0")
+      @expected_kvs[k] = 0
     end
   end
 
@@ -139,20 +143,20 @@ class Verifier
     Parallel.each(0...@count, :in_threads => @concurrency) do |i|
       sleep(@wait_ms / 1000.0)
       retry_count = 0
+      diff = Random.rand(100000)
       loop do
+        request_id = "update-#{i}"
+        label = "update-#{i}-#{retry_count}"
         if retry_count >= RETRY
-          throw_exception("Retry over (CAS): i='#{i}'")
+          throw_exception("[#{label}] Retry over (INCR): i='#{i}'")
         end
 
         k = key(i)
-        v = send_command("GET #{k}")
-        diff = Random.rand(100000)
-        next_v = Integer(v) + diff
+        $logger.debug "[#{label}] diff=#{diff}"
 
-        $logger.debug "[#{i}] diff=#{diff}"
-
-        if send_command("CAS #{k} #{v} #{next_v}") || Integer(send_command("GET #{k}")) == next_v
-          @table[k] += diff
+        if send_command(label, request_id, "INCR #{k} #{diff}")
+          @expected_kvs[k] += diff
+          $logger.debug "[#{label}] updated #{k}: expected_kvs=#{@expected_kvs[k]}"
           break
         end
 
@@ -171,9 +175,9 @@ class Verifier
     @key_size.times.each do |i|
       k = key(i)
       puts "Key: #{k}"
-      expected = @table[k]
-      @clients.each do |client|
-        v = Integer(send_command("GET #{k}", client))
+      expected = @expected_kvs[k]
+      @clients.each_with_index do |client, j|
+        v = Integer(send_command("verify-#{i}-#{j}", nil, "GET #{k}", client))
         if v == expected
           puts "Success: expected=#{expected}, actual=#{v}"
         else
@@ -206,7 +210,37 @@ class Verifier
 end
 
 if $0 == __FILE__
-  if Verifier.new(4, 16, 512, 500).run
+  options = {
+    concurrency: 8,
+    key_size: 16,
+    count: 2048,
+    wait_ms: 400,
+  }
+
+  OptionParser.new do |opts|
+    opts.on("-C", "--concurrency CONCURRENCY", "Concurrency") do |v|
+      options[:concurrency] = Integer(v)
+    end
+
+    opts.on("-k", "--key-size KEY_SIZE", "Key size") do |v|
+      options[:key_size] = Integer(v)
+    end
+
+    opts.on("-c", "--count COUNT", "Count") do |v|
+      options[:count] = Integer(v)
+    end
+
+    opts.on("-w", "--wait-ms WAIT_MS", "Wait (ms)") do |v|
+      options[:wait_ms] = Integer(v)
+    end
+
+  end.parse!
+
+  if Verifier.new(
+      options[:concurrency],
+      options[:key_size],
+      options[:count],
+      options[:wait_ms]).run
     exit 0
   else
     exit 1

@@ -82,12 +82,17 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
             | Some l -> l.term <> param.prev_log_term
             | None -> true
     then (
+      let entries_size = List.length param.entries in
       (* Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
       Logger.warn logger
         (Printf.sprintf
-           "Received a request that doesn't meet requirement.\nparam:%s,\nstate:%s"
-           (Params.show_append_entries_request param)
-           (PersistentLog.show persistent_log));
+          "Received a request that doesn't meet requirement.\nparam:{\n  term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d,\n  first_entry:%s,\n  last_entry:%s\n},\nstate:%s"
+          param.term param.leader_id param.prev_log_term param.prev_log_index
+          entries_size
+          param.leader_commit
+          (PersistentLogEntry.show (List.nth_exn param.entries 0))
+          (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
+          (PersistentLog.show persistent_log));
       false
     )
     else (

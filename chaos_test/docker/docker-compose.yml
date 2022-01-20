@@ -11,6 +11,11 @@ x-node: &default-node
   - oraft
   restart: always
 
+x-chaos-node: &chaos-node
+  networks:
+  - oraft
+  restart: always
+
 services:
   oraft-1:
     <<: *default-node
@@ -53,25 +58,39 @@ services:
     - '8185:8181'
     container_name: oraft-5
   chaos-pause:
+    <<: *chaos-node
     image: gaiaadm/pumba
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock
-    command: "--log-level info --random --interval 7s pause --duration 2s re2:oraft-*"
+    command: "--log-level debug --random --interval 17s pause --duration 2s pause oraft-1 oraft-2 oraft-3 oraft-4 oraft-5"
     depends_on:
     - oraft-1
     - oraft-2
     - oraft-3
     - oraft-4
     - oraft-5
-# chaos-delay:
-#   image: gaiaadm/pumba
-#   volumes:
-#   - /var/run/docker.sock:/var/run/docker.sock
-#   command: "--log-level info --random --interval 11s netem --tc-image gaiadocker/iproute2 --duration 4s delay re2:oraft-*"
-#   depends_on:
-#   - oraft-1
-#   - oraft-2
-#   - oraft-3
-#   - oraft-4
-#   - oraft-5
+  chaos-delay:
+    <<: *chaos-node
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level debug --random --interval 23s netem --duration 3s delay oraft-1 oraft-2 oraft-3 oraft-4 oraft-5"
+    depends_on:
+    - oraft-1
+    - oraft-2
+    - oraft-3
+    - oraft-4
+    - oraft-5
+  chaos-kill:
+    <<: *chaos-node
+    image: gaiaadm/pumba
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    command: "--log-level debug --random --interval 27s kill -l 1 -s SIGTERM oraft-1 oraft-2 oraft-3 oraft-4 oraft-5"
+    depends_on:
+    - oraft-1
+    - oraft-2
+    - oraft-3
+    - oraft-4
+    - oraft-5
 

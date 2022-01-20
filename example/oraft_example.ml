@@ -3,46 +3,61 @@ open Cohttp_lwt_unix
 
 let kvs = Hashtbl.create 64
 
+let ids = Hashtbl.create 4096
+
 let lock = Lwt_mutex.create ()
 
 let parse_command s =
+  (* ID CMD ARG0 ARG1 ... *)
   let parts = Core.String.split ~on:' ' s in
-  let cmd = List.hd parts in
-  let args = List.tl parts in
-  (cmd, args)
-
+  match parts with
+    | id::rest -> (
+      match rest with
+      |  cmd::args -> (id, cmd, args)
+      |  _ -> failwith "Unexpected format"
+    )
+    | _ -> failwith "Unexpected format"
 
 let with_flush_stdout f =
   f ();
   Core.Out_channel.flush stdout
 
 
-let kvs_set args = Hashtbl.replace kvs (List.nth args 0) (List.nth args 1)
-
-let kvs_incr args =
-  let k = List.nth args 0 in
-  let v =
-    match Hashtbl.find_opt kvs k with
-    | Some x -> (
-        match int_of_string_opt x with Some i -> i | None -> 0
-      )
-    | None -> 0
-  in
-  let incremented = string_of_int (v + 1) in
-  Hashtbl.replace kvs k incremented
+let remember_id id =
+  Hashtbl.replace ids id true
 
 
-let kvs_cas args =
-  let k = List.nth args 0 in
-  let expected = List.nth args 1 in
-  let v = List.nth args 2 in
-  match Hashtbl.find_opt kvs k with
-  | Some x when x = expected -> Hashtbl.replace kvs k v
-  | Some x ->
-      with_flush_stdout (fun () ->
-          Printf.printf "!!!! INVALID CAS : k=%s, expected=%s, v=%s !!!!\n" k
-            expected x)
-  | None -> ()
+let exec_with_dedup label id args f =
+  match Hashtbl.find_opt ids id with
+  | Some _ ->
+    Printf.printf "???? duplicated id (%s) : id=%s, args=%s ????\n" label id (String.concat " " args)
+  | None -> (
+    let result = f () in
+    remember_id id;
+    result
+  )
+
+
+let kvs_set id args =
+  exec_with_dedup "SET" id args (fun () ->
+    Hashtbl.replace kvs (List.nth args 0) (List.nth args 1)
+  )
+
+
+let kvs_incr id args =
+  exec_with_dedup "INCR" id args (fun () ->
+    let k = List.nth args 0 in
+    let v =
+      match Hashtbl.find_opt kvs k with
+      | Some x -> (
+          match int_of_string_opt x with Some i -> i | None -> 0
+        )
+      | None -> 0
+    in
+    let diff = List.nth args 1 in
+    let incremented = string_of_int (v + int_of_string(diff)) in
+    Hashtbl.replace kvs k incremented;
+  )
 
 
 let oraft conf_file =
@@ -50,11 +65,10 @@ let oraft conf_file =
       with_flush_stdout (fun () ->
           Printf.printf "<<<< %d: APPLY(%d) : %s >>>>\n" node_id log_index
             log_data);
-      let cmd, args = parse_command log_data in
+      let id, cmd, args = parse_command log_data in
       match cmd with
-      | "SET" -> kvs_set args
-      | "INCR" -> kvs_incr args
-      | "CAS" -> kvs_cas args
+      | "SET" -> kvs_set id args
+      | "INCR" -> kvs_incr id args
       | _ -> ())
 
 
@@ -83,7 +97,7 @@ let server port (oraft : Oraft.t) =
     match (meth, path) with
     | `POST, "/command" ->
         ( body |> Cohttp_lwt.Body.to_string >>= fun request_body ->
-          let cmd, args = parse_command request_body in
+          let _, cmd, args = parse_command request_body in
           match cmd with
           | "SET" ->
               oraft.post_command request_body >>= fun result ->
@@ -93,21 +107,6 @@ let server port (oraft : Oraft.t) =
               oraft.post_command request_body >>= fun result ->
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
-          | "CAS" ->
-              Lwt_mutex.with_lock lock (fun () ->
-                  handle_or_proxy oraft request_body (fun () ->
-                      let k = List.nth args 0 in
-                      let expected = List.nth args 1 in
-                      match Hashtbl.find_opt kvs k with
-                      | Some x when x = expected ->
-                          oraft.post_command request_body >>= fun result ->
-                          Lwt.return
-                            ( if result
-                            then (`OK, "")
-                            else (`Internal_server_error, "")
-                            )
-                      | Some _ -> Lwt.return (`Conflict, "")
-                      | None -> Lwt.return (`Not_found, "")))
           | "GET" ->
               handle_or_proxy oraft request_body (fun () ->
                   let k = List.nth args 0 in
