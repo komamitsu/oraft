@@ -6,9 +6,17 @@ type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
 
 type processor = Params.request -> response
 
+type handler = (key, converter * processor) Stdlib.Hashtbl.t
+
+type t
+
 val create :
   port:int ->
   logger:Logger.t ->
   lock:Lwt_mutex.t ->
-  table:(key, converter * processor) Hashtbl.t ->
-  unit Lwt.t * unit Lwt.u
+  t
+
+val set_handler : t -> handler:handler -> unit
+
+val disable_handler : t -> unit
+
