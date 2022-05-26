@@ -20,7 +20,6 @@ type t = {
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
-  mutable next_mode : mode;
 }
 
 let init ~conf ~apply_log ~state =
@@ -31,7 +30,6 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level;
     apply_log;
     state;
-    next_mode = CANDIDATE
   }
 
 let unexpected_request t =
@@ -39,9 +37,9 @@ let unexpected_request t =
   Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
 
 let request_handler t ~election_timer =
-  let handlers = Stdlib.Hashtbl.create 2 in
+  let handler = Stdlib.Hashtbl.create 2 in
   let open Params in
-  Stdlib.Hashtbl.add handlers
+  Stdlib.Hashtbl.add handler
     (`POST, "/append_entries")
     ( (fun json ->
         match append_entries_request_of_yojson json with
@@ -57,12 +55,12 @@ let request_handler t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
+            ~cb_newer_term:(fun () -> Timer.reset election_timer)
             ~handle_same_term_as_newer:false
             ~param:x
       | _ -> unexpected_request t);
 
-  Stdlib.Hashtbl.add handlers
+  Stdlib.Hashtbl.add handler
     (`POST, "/request_vote")
     ( (fun json ->
         match request_vote_request_of_yojson json with
@@ -77,11 +75,11 @@ let request_handler t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
+            ~cb_newer_term:(fun () -> Timer.reset election_timer)
             ~param:x
       | _ -> unexpected_request t);
 
-  handlers
+  handler
 
 let run t () =
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
@@ -98,4 +96,4 @@ let run t () =
     Timer.start election_timer ~on_stop:(fun () -> ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread ] >>= fun () -> Lwt.return t.next_mode
+  Lwt.join [ election_timer_thread; (Request_dispatcher.server server)] >>= fun () -> Lwt.return CANDIDATE

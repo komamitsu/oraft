@@ -25,6 +25,8 @@ type t = {
   callback_wrapper : callback_wrapper
 }
 
+let server t = t.server
+
 let default_callback : callback =
   fun _ _ _ -> Server.respond_string ~status:`Internal_server_error ~body:"" ()
 
