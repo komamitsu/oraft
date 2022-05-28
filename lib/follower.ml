@@ -11,23 +11,23 @@ open State
   *   convert to candidate
   *)
 
-let mode = Some FOLLOWER
-
-let lock = Lwt_mutex.create ()
-
 type t = {
   conf : Conf.t;
   logger : Logger.t;
+  lock : Lwt_mutex.t;
+  dispatcher : Request_dispatcher.t;
   apply_log : apply_log;
   state : State.common;
 }
 
-let init ~conf ~apply_log ~state =
+let init ~(resource:Resource.t) ~apply_log ~state =
+  let logger = resource.logger in
+  Logger.mode logger ~mode:(Some FOLLOWER);
   {
-    conf;
-    logger =
-      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level;
+    conf = resource.conf;
+    logger = resource.logger;
+    lock = resource.lock;
+    dispatcher = resource.dispatcher;
     apply_log;
     state;
   }
@@ -90,10 +90,9 @@ let run t () =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
   let handler = request_handler t ~election_timer in
-  let server = Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~lock in
-  ignore (Request_dispatcher.set_handler server ~handler);
+  ignore (Request_dispatcher.set_handler t.dispatcher ~handler);
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread; (Request_dispatcher.server server)] >>= fun () -> Lwt.return CANDIDATE
+  Lwt.join [ election_timer_thread; (Request_dispatcher.server t.dispatcher)] >>= fun () -> Lwt.return CANDIDATE

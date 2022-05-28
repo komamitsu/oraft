@@ -24,25 +24,27 @@ open State
  *   of matchIndex[i] ≥ N, and log[N].term == currentTerm:
  *   set commitIndex = N (§5.3, §5.4).
  *)
-let mode = Some LEADER
-
-let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
+  lock : Lwt_mutex.t;
+  dispatcher : Request_dispatcher.t;
   apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
   mutable last_request_ts : Time_ns.t option;
 }
 
-let init ~conf ~apply_log ~state =
+let init ~(resource:Resource.t) ~apply_log ~state =
+  let conf = resource.conf in
+  let logger = resource.logger in
+  Logger.mode logger ~mode:(Some LEADER);
   {
-    conf;
-    logger =
-      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level;
+    conf = resource.conf;
+    logger = resource.logger;
+    lock = resource.lock;
+    dispatcher = resource.dispatcher;
     apply_log;
     state =
       {
@@ -305,7 +307,7 @@ let append_entries_thread t =
       let proc = if !i = 0 || !i >= n then (
         State.log_leader t.state ~logger:t.logger;
         i := 1;
-        Lwt_mutex.with_lock lock (fun () ->
+        Lwt_mutex.with_lock t.lock (fun () ->
           (* TODO: The result of append_entries can be ignored? *)
           append_entries t >>= fun _ -> Lwt.return ()
         )
@@ -329,10 +331,9 @@ let run t () =
     Printf.sprintf "### Leader: Start (term:%d) ###" @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;
   let handler = request_handler t in
-  let server = Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~lock in
-  ignore (Request_dispatcher.set_handler server ~handler);
+  ignore (Request_dispatcher.set_handler t.dispatcher ~handler);
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
   let append_entries_thread = append_entries_thread t in
-  Lwt.join [ append_entries_thread; (Request_dispatcher.server server) ] >>= fun () -> Lwt.return FOLLOWER
+  Lwt.join [ append_entries_thread; (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
