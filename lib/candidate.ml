@@ -189,5 +189,5 @@ let run t () =
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.cancel vote_request)
   in
-  Lwt.join [ election_timer_thread; received_votes; (Request_dispatcher.server t.dispatcher) ] >>= fun () ->
+  Lwt.pick [ election_timer_thread; received_votes; (Request_dispatcher.server t.dispatcher) ] >>= fun () ->
   Lwt.return (next_mode t)

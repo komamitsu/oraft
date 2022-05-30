@@ -336,4 +336,4 @@ let run t () =
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
   let append_entries_thread = append_entries_thread t in
-  Lwt.join [ append_entries_thread; (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
+  Lwt.pick [ append_entries_thread; (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
