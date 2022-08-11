@@ -1,0 +1,50 @@
+#!/bin/usr/env ruby
+
+class LogSorter
+  def sort(inputs)
+    files = []
+    inputs.each_with_index do |input, index|
+      files << File.open(input)
+    end
+
+    # e.g. 2022-08-09 13:27:19.538613Z INFO [1:Base.FOLLOWER] - Leader ID is changed to 3
+    line_pattern = /(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}Z)\s+(?<level>\w+)\s+\[(?<node>\d+):(?<mode>\w+)\]\s+-\s+(?<content>.*)/
+
+    count = 0
+    lines = Array.new(inputs.size)
+    loop do
+      if n && n <= count
+        break
+      end
+
+      lines.each_with_index do |line, i|
+        unless line
+          lines[i] = files[i].read_line
+        end
+      end
+      break if lines.all? {|line| line.nil?}
+
+      [oldest, oldest_index] = lines.each_with_index.min
+      unless line_pattern =~ oldest
+        raise "Unexpected line format: #{oldest}"
+      end
+      node_index = Integer(node) - 1
+      
+      putc timestamp
+      putc "\t" * node_index
+      puts "[#{node}:#{mode}] #{content}"
+
+      lines[oldest_index] = nil
+      count++
+    end
+  ensure
+    files.each do |f|
+      f.close rescue
+    end
+  end
+end
+
+if $0 == __FILE__
+  LogSorter.new.sort(ARGV)
+end
+
