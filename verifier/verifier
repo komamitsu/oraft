@@ -1,12 +1,15 @@
 #!/usr/bin/env ruby
 
 require 'logger'
+require 'time'
 require 'parallel'
 require 'faraday'
 require 'securerandom'
 require 'optparse'
 
 $logger = Logger.new(STDOUT)
+# $logger.formatter = proc {|level, datetime, progname, msg| "#{datetime.utc.iso8601(6)} #{level} #{msg}\n"}
+$logger.formatter = proc {|level, datetime, progname, msg| "#{level} #{msg}\n"}
 $logger.level = Logger::DEBUG
 
 class Error
