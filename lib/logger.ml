@@ -47,7 +47,7 @@ let write t ~level ~msg =
   then
     with_file t.output_path
       ~f:(fun file ->
-        let now = Core.Time.to_string (Core.Time.now ()) in
+        let now = Core.Time.to_string_iso8601_basic (Core.Time.now ()) ~zone:Core.Time.Zone.utc in
         let s =
           Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
             t.node_id mode msg
