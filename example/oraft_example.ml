@@ -7,6 +7,10 @@ let ids = Hashtbl.create 4096
 
 let lock = Lwt_mutex.create ()
 
+let print_log s =
+  let now = Core.Time.to_string (Core.Time.now ()) in
+  Printf.printf "%s - %s\n" now s
+
 let parse_command s =
   (* ID CMD ARG0 ARG1 ... *)
   let parts = Core.String.split ~on:' ' s in
@@ -22,21 +26,19 @@ let with_flush_stdout f =
   f ();
   Core.Out_channel.flush stdout
 
-
 let remember_id id =
   Hashtbl.replace ids id true
-
 
 let exec_with_dedup label id args f =
   match Hashtbl.find_opt ids id with
   | Some _ ->
-    Printf.printf "???? duplicated id (%s) : id=%s, args=%s ????\n" label id (String.concat " " args)
+    print_log @@
+      Printf.sprintf "???? duplicated id (%s) : id=%s, args=%s ????\n" label id (String.concat " " args)
   | None -> (
     let result = f () in
     remember_id id;
     result
   )
-
 
 let kvs_set id args =
   exec_with_dedup "SET" id args (fun () ->
@@ -63,8 +65,9 @@ let kvs_incr id args =
 let oraft conf_file =
   Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
       with_flush_stdout (fun () ->
-          Printf.printf "<<<< %d: APPLY(%d) : %s >>>>\n" node_id log_index
-            log_data);
+        print_log @@
+          Printf.sprintf "<<<< %d: APPLY(%d) : %s >>>>\n" node_id log_index log_data
+      );
       let id, cmd, args = parse_command log_data in
       match cmd with
       | "SET" -> kvs_set id args
