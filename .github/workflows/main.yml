@@ -24,7 +24,7 @@ jobs:
         run: opam exec -- dune build
       - uses: actions/setup-ruby@v1
         with:
-          ruby-version: '2.6'
+          ruby-version: '3.1'
       - name: Smoke test
         run: opam exec -- smoke_test/run.sh
       - name: Archive the smoke test logs and status
