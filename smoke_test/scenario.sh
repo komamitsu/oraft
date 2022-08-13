@@ -60,11 +60,8 @@ function kill_5th_server() {
 }
 
 function kill_server() {
-    pid=$1
-    target_pid=$(ps -Ao ppid,pid,command | awk -v pid=$pid '($1 == pid && $3 == "example/oraft_example.exe") { print $2 }')
-    if [[ -n $target_pid ]]; then
-        kill $target_pid
-    fi
+    ppid=$1
+    pkill -P $ppid oraft_example
 }
 
 function kill_all_servers() {
