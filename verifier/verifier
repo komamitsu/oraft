@@ -8,7 +8,7 @@ require 'securerandom'
 require 'optparse'
 
 $logger = Logger.new(STDOUT)
-# $logger.formatter = proc {|level, datetime, progname, msg| "#{datetime.utc.iso8601(6)} #{level} #{msg}\n"}
+STDOUT.sync = true
 $logger.formatter = proc {|level, datetime, progname, msg| "#{level} #{msg}\n"}
 $logger.level = Logger::DEBUG
 
@@ -78,7 +78,6 @@ class Verifier
   def throw_exception(msg)
     ex = Exception.new(msg)
     $logger.error(ex)
-    STDOUT.flush
     raise ex
   end
 
