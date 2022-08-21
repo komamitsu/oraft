@@ -170,35 +170,32 @@ class Verifier
   end
 
   def verify_values
-    puts
-    puts "================================================================================"
-    puts "Result"
-    puts "--------------------------------------------------------------------------------"
+    $logger.info "================================================================================"
+    $logger.info "Result"
+    $logger.info "--------------------------------------------------------------------------------"
     failed = 0
     @key_size.times.each do |i|
       k = key(i)
-      puts "Key: #{k}"
+      $logger.info "Key: #{k}"
       expected = @expected_kvs[k]
       @clients.each_with_index do |client, j|
         v = Integer(send_command("verify-#{i}-#{j}", nil, "GET #{k}", client))
         if v == expected
-          puts "Success: expected=#{expected}, actual=#{v}"
+          $logger.info "Success: expected=#{expected}, actual=#{v}"
         else
-          puts "Failed:  expected=#{expected}, actual=#{v}"
+          $logger.info "Failed:  expected=#{expected}, actual=#{v}"
           failed += 1
         end
       end
-      puts "--------------------------------------------------------------------------------"
+      $logger.info "--------------------------------------------------------------------------------"
     end
 
-    puts
+    $logger.info
     if failed == 0
-      puts "All good"
-      puts
+      $logger.info "All good"
       true
     else
-      puts "Detected any failure: failed_count=#{failed}"
-      puts
+      $logger.info "Detected any failure: failed_count=#{failed}"
       false
     end
   end

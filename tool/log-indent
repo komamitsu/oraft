@@ -3,18 +3,38 @@
 class LogIndenter
   def process
     # e.g. 2022-08-09 13:27:19.538613Z INFO [1:Base.FOLLOWER] - Leader ID is changed to 3
-    line_pattern = /^(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}Z)\s+(?<level>\w+)\s+\[(?<node>\d+):(?<mode>.*)\]\s+-\s+(?<content>.*)/
+    oraft_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z)\s+(?<level>[A-Z]+)\s+\[(?<node>\d+):(?<mode>.*)\]\s+-\s+(?<content>.*)/
+
+    # e.g. 2022-08-13T13:29:33.2586134Z oraft-5        | <<<< 5: APPLY(5) : c99d4d2b-6037-4b48-a9b7-b5ac10ca7af5 SET key-2 0 >>>>
+    example_app_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)\s+oraft-(?<node>\d+)\s+\|\s+(?<content>.*)/
+
+    # e.g. 2022-08-13T13:29:34.7615629Z DEBUG [update-0-0] client=http://localhost:8181/, command='INCR key-0 1867'
+    verifier_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)\s+(?<level>[A-Z]+)\s+(?<content>.*)/
+
+    # e.g. 2022-08-13T13:29:29.5001053Z Attaching to oraft_chaos-delay_1, oraft_chaos-kill_1, oraft_chaos-pause_1, oraft-2, oraft-3, oraft-1, oraft-4, oraft-5
+    other_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z)\s+(?<content>.*)/
+
 
     STDIN.each_line do |line|
-      unless m = line_pattern.match(line)
+      if m = (oraft_line_pattern.match(line) || example_app_line_pattern.match(line))
+        captured = m.named_captures
+        node_index = Integer(captured['node'])
+        print captured['timestamp']
+        print "\t" * (node_index + 2)
+        puts "[#{captured['node']}:#{captured['mode']}] #{captured['level']} #{captured['content']}"
+      elsif m = verifier_line_pattern.match(line)
+        captured = m.named_captures
+        print captured['timestamp']
+        print "\t" * 2
+        puts captured['content']
+      elsif m = other_line_pattern.match(line)
+        captured = m.named_captures
+        print captured['timestamp']
+        print "\t"
+        puts captured['content']
+      else
         raise "Unexpected line format: #{line}"
       end
-      captured = m.named_captures
-      node_index = Integer(captured['node'])
-      
-      print captured['timestamp']
-      print "\t" * node_index
-      puts "[#{captured['node']}:#{captured['mode']}] #{captured['content']}"
     end
   end
 end
