@@ -38,7 +38,7 @@ module PersistentLogEntry : sig
 
   val pp : Format.formatter -> t -> unit
 
-  val show : t -> string
+  val show_for_log : t -> string
 
   val to_yojson : t -> Yojson.Safe.t
 
