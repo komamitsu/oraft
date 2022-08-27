@@ -21,22 +21,25 @@ let state (conf : Conf.t) =
   }
 
 
-let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
+let process ~(resource:Resource.t) ~apply_log ~state ~state_exec : unit Lwt.t =
+  let logger = resource.logger in
   let rec loop state_exec =
     state_exec () >>= fun next ->
     let next_state_exec =
       VolatileState.update_mode state.volatile_state ~logger next;
       match next with
-      | FOLLOWER -> Follower.run (Follower.init ~conf ~apply_log ~state)
-      | CANDIDATE -> Candidate.run (Candidate.init ~conf ~apply_log ~state)
-      | LEADER -> Leader.run (Leader.init ~conf ~apply_log ~state)
+      | FOLLOWER -> Follower.run (Follower.init ~resource ~apply_log ~state)
+      | CANDIDATE -> Candidate.run (Candidate.init ~resource ~apply_log ~state)
+      | LEADER -> Leader.run (Leader.init ~resource ~apply_log ~state)
     in
     loop next_state_exec
   in
   loop state_exec
 
 
-let post_command ~(conf : Conf.t) ~logger ~state s =
+let post_command ~(resource:Resource.t) ~state s =
+  let conf = resource.conf in
+  let logger = resource.logger in
   let request_json =
     let r : Params.client_command_request = { data = s } in
     Params.client_command_request_to_yojson r
@@ -71,18 +74,15 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
 let start ~conf_file ~apply_log =
   let conf = Conf.from_file conf_file in
   let state = state conf in
-  let logger =
-    Logger.create ~node_id:conf.node_id ~mode:None ~output_path:conf.log_file
-      ~level:conf.log_level
-  in
-  let post_command = post_command ~conf ~logger ~state in
+  let resource = Resource.create ~conf in
+  let post_command = post_command ~resource ~state in
   let initial_state_exec =
-    Follower.run (Follower.init ~conf ~apply_log ~state)
+    Follower.run (Follower.init ~resource ~apply_log ~state)
   in
   {
     conf;
     process =
-      process ~conf ~logger ~apply_log ~state ~state_exec:initial_state_exec;
+      process ~resource ~apply_log ~state ~state_exec:initial_state_exec;
     post_command;
     current_state =
       (fun () ->
