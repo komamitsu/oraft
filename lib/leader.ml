@@ -300,7 +300,7 @@ let append_entries_thread t =
   let rec loop () =
     if t.should_step_down
     then (
-      Logger.debug t.logger "Quiting Leader";
+      Logger.info t.logger "Quiting Leader";
       Lwt.return ()
     )
     else (
