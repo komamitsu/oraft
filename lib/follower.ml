@@ -75,7 +75,7 @@ let request_handler t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> Timer.reset election_timer)
+            ~cb_newer_term:(fun () -> ())
             ~param:x
       | _ -> unexpected_request t);
 
