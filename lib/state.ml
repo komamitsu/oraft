@@ -39,7 +39,9 @@ module PersistentState = struct
     Out_channel.write_all t.path
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
 
-  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
+  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
+
+  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show_for_log t)
 
   let voted_for t = t.voted_for
 
@@ -162,8 +164,10 @@ module PersistentLog = struct
 
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show_for_log
 
+  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
+
   let log t ~logger =
-    Logger.debug logger (sprintf "PersistentLog : %s" (show t))
+    Logger.debug logger (sprintf "PersistentLog : %s" (show_for_log t))
 
   let get t i = List.nth t.list (i - 1)
 
@@ -313,8 +317,9 @@ module VolatileStateOnLeader = struct
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
 
+  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
 
-  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
+  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show_for_log t)
 
   let get t i = List.nth_exn t i
 
