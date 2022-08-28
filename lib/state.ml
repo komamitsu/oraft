@@ -241,7 +241,9 @@ module VolatileState = struct
 
   let create () = { commit_index = 0; last_applied = 0; mode = FOLLOWER; leader_id = None }
 
-  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
+  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
+
+  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show_for_log t)
 
   let update_commit_index t i = t.commit_index <- i
 
