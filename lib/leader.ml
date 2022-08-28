@@ -305,6 +305,9 @@ let append_entries_thread t =
     )
     else (
       let proc = if !i = 0 || !i >= n then (
+        (* TODO: Remove this *)
+        Logger.info t.logger
+          (Printf.sprintf "In append_entries_thread. should_step_down: %b" t.should_step_down);
         State.log_leader t.state ~logger:t.logger;
         i := 1;
         Lwt_mutex.with_lock t.lock (fun () ->
