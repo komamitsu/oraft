@@ -39,9 +39,7 @@ module PersistentState = struct
     Out_channel.write_all t.path
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
 
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
-
-  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show_for_log t)
+  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
 
   let voted_for t = t.voted_for
 
@@ -109,9 +107,7 @@ module PersistentLogEntry = struct
 
   let from_string s = s
 
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
-
-  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ (show_for_log t))
+  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ (show t))
 end
 
 module PersistentLog = struct
@@ -131,7 +127,7 @@ module PersistentLog = struct
     sprintf
       "{PersistentLog.path = \"%s\"; last_index = %d; last_entries = [%s]}"
       t.path t.last_index
-      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show_for_log))
+      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
@@ -153,7 +149,7 @@ module PersistentLog = struct
                     failwith
                       (sprintf "Unexpected lower index in logs. cur:%d, log:%s"
                          !cur
-                         (PersistentLogEntry.show_for_log log));
+                         (PersistentLogEntry.show log));
                   cur := log.index;
                   log
               | Error err -> failwith (sprintf "Failed to parse JSON: %s" err))
@@ -162,12 +158,10 @@ module PersistentLog = struct
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
 
-  let to_string_list t = List.map t.list ~f:PersistentLogEntry.show_for_log
-
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
+  let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
-    Logger.debug logger (sprintf "PersistentLog : %s" (show_for_log t))
+    Logger.debug logger (sprintf "PersistentLog : %s" (show t))
 
   let get t i = List.nth t.list (i - 1)
 
@@ -241,9 +235,7 @@ module VolatileState = struct
 
   let create () = { commit_index = 0; last_applied = 0; mode = FOLLOWER; leader_id = None }
 
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
-
-  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show_for_log t)
+  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
 
   let update_commit_index t i = t.commit_index <- i
 
@@ -319,9 +311,7 @@ module VolatileStateOnLeader = struct
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
 
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
-
-  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show_for_log t)
+  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
 
   let get t i = List.nth_exn t i
 

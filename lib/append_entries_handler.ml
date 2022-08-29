@@ -91,8 +91,8 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
           param.term param.leader_id param.prev_log_term param.prev_log_index
           entries_size
           param.leader_commit
-          (PersistentLogEntry.show_for_log (List.nth_exn param.entries 0))
-          (PersistentLogEntry.show_for_log (List.nth_exn param.entries (entries_size - 1)))
+          (PersistentLogEntry.show (List.nth_exn param.entries 0))
+          (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
           (PersistentLog.show persistent_log));
       false
     )
