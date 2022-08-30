@@ -14,25 +14,24 @@ open State
  * - If AppendEntries RPC received from new leader: convert to follower
  * - If election timeout elapses: start new election
  *)
+let mode = Some CANDIDATE
+
+let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
-  lock : Lwt_mutex.t;
-  dispatcher : Request_dispatcher.t;
   apply_log : apply_log;
   state : State.common;
   mutable next_mode : mode option;
 }
 
-let init ~(resource:Resource.t) ~apply_log ~state =
-  let logger = resource.logger in
-  Logger.mode logger ~mode:(Some CANDIDATE);
+let init ~conf ~apply_log ~state =
   {
-    conf = resource.conf;
-    logger = resource.logger;
-    lock = resource.lock;
-    dispatcher = resource.dispatcher;
+    conf;
+    logger =
+      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+        ~level:conf.log_level;
     apply_log;
     state;
     next_mode = None;
@@ -182,12 +181,13 @@ let run t () =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
   let handler = request_handler t ~election_timer in
-  ignore (Request_dispatcher.set_handler t.dispatcher ~handler);
+  let server = Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~lock in
+  ignore (Request_dispatcher.set_handler server ~handler);
   (* Send RequestVote RPCs to all other servers *)
-  let vote_request = Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer) in
+  let vote_request = Lwt_mutex.with_lock lock (fun () -> request_vote t ~election_timer) in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.cancel vote_request)
   in
-  Lwt.join [ election_timer_thread; received_votes; (Request_dispatcher.server t.dispatcher) ] >>= fun () ->
+  Lwt.join [ election_timer_thread; received_votes; (Request_dispatcher.server server) ] >>= fun () ->
   Lwt.return (next_mode t)
