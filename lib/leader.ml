@@ -335,4 +335,5 @@ let run t () =
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
-  Lwt.choose [ (append_entries_thread t); (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
+  let append_entries_thread = append_entries_thread t in
+  Lwt.pick [ append_entries_thread; (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
