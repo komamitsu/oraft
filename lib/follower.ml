@@ -95,4 +95,4 @@ let run t () =
     Timer.start election_timer ~on_stop:(fun () -> ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.pick[ election_timer_thread; (Request_dispatcher.server t.dispatcher)] >>= fun () -> Lwt.return CANDIDATE
+  Lwt.join [ election_timer_thread; (Request_dispatcher.server t.dispatcher)] >>= fun () -> Lwt.return CANDIDATE
