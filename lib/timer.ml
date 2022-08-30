@@ -42,8 +42,3 @@ let create ~logger ~timeout_millis =
 
 
 let stop t = t.should_stop <- true
-
-let reset t =
-  t.should_stop <- false;
-  update t
-

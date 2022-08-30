@@ -83,10 +83,10 @@ let request_vote t ~election_timer =
   in
   Lwt_list.map_p request (Conf.peer_nodes t.conf)
 
-let request_handler t ~election_timer =
-  let handler = Stdlib.Hashtbl.create 2 in
+let request_handlers t ~election_timer =
+  let handlers = Stdlib.Hashtbl.create 2 in
   let open Params in
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/append_entries")
     ( (fun json ->
         match append_entries_request_of_yojson json with
@@ -105,7 +105,7 @@ let request_handler t ~election_timer =
             ~handle_same_term_as_newer:true
             ~param:x
       | _ -> unexpected_request t);
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
         match request_vote_request_of_yojson json with
@@ -122,7 +122,7 @@ let request_handler t ~election_timer =
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~param:x
       | _ -> unexpected_request t);
-  handler
+  handlers
 
 let collect_votes t ~election_timer ~vote_request =
   ( vote_request >>= fun responses ->
@@ -180,14 +180,18 @@ let run t () =
   let election_timer =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
-  let handler = request_handler t ~election_timer in
-  let server = Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~lock in
-  ignore (Request_dispatcher.set_handler server ~handler);
+  let handlers = request_handlers t ~election_timer in
+  let server, stopper =
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
+  in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request = Lwt_mutex.with_lock lock (fun () -> request_vote t ~election_timer) in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =
-    Timer.start election_timer ~on_stop:(fun () -> Lwt.cancel vote_request)
+    Timer.start election_timer ~on_stop:(fun () ->
+        Lwt.wakeup stopper ();
+        Lwt.cancel vote_request)
   in
-  Lwt.join [ election_timer_thread; received_votes; (Request_dispatcher.server server) ] >>= fun () ->
+  Lwt.join [ election_timer_thread; received_votes; server ] >>= fun () ->
   Lwt.return (next_mode t)
