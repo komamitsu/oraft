@@ -38,7 +38,7 @@ let unexpected_request t =
   Logger.error t.logger "Unexpected request";
   Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
 
-let request_handler t ~election_timer =
+let request_handlers t ~election_timer =
   let handlers = Stdlib.Hashtbl.create 2 in
   let open Params in
   Stdlib.Hashtbl.add handlers
@@ -91,11 +91,13 @@ let run t () =
   let election_timer =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
-  let handler = request_handler t ~election_timer in
-  let server = Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger ~lock in
-  ignore (Request_dispatcher.set_handler server ~handler);
+  let handlers = request_handlers t ~election_timer in
+  let server, server_stopper =
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
+  in
   let election_timer_thread =
-    Timer.start election_timer ~on_stop:(fun () -> ())
+    Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread ] >>= fun () -> Lwt.return t.next_mode
+  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return t.next_mode
