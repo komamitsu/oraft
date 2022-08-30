@@ -21,6 +21,7 @@ open State
 let append_entries ~(conf : Conf.t) ~logger ~state
     ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
     ~cb_newer_term ~handle_same_term_as_newer =
+  (* TODO: Revisit whether it's okay to update leader_id w/o any check *)
   VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
@@ -90,8 +91,8 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
           param.term param.leader_id param.prev_log_term param.prev_log_index
           entries_size
           param.leader_commit
-          (PersistentLogEntry.show_for_log (List.nth_exn param.entries 0))
-          (PersistentLogEntry.show_for_log (List.nth_exn param.entries (entries_size - 1)))
+          (PersistentLogEntry.show (List.nth_exn param.entries 0))
+          (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
           (PersistentLog.show persistent_log));
       false
     )

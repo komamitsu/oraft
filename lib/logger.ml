@@ -4,7 +4,7 @@ type level = TRACE | DEBUG | INFO | WARN | ERROR
 
 type t = {
   node_id : int;
-  mutable mode : Base.mode option;
+  mode : Base.mode option;
   output_path : string;
   level : level;
 }
@@ -35,11 +35,9 @@ let level_of_string s =
   | _ -> failwith (Printf.sprintf "Unexpected value: %s" s)
 
 
-let create ~node_id ~output_path ~level =
-  { node_id; mode = None; output_path; level = level_of_string level }
+let create ~node_id ~mode ~output_path ~level =
+  { node_id; mode; output_path; level = level_of_string level }
 
-let mode t ~mode =
-  t.mode <- mode
 
 let write t ~level ~msg =
   let mode =
@@ -50,6 +48,7 @@ let write t ~level ~msg =
     with_file t.output_path
       ~f:(fun file ->
         let now = Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ()) ~zone:Core.Time.Zone.utc in
+        let msg = Str.(global_replace (regexp "\n") "" msg) in
         let s =
           Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
             t.node_id mode msg

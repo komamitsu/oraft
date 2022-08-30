@@ -3,8 +3,6 @@
 module PersistentState : sig
   type t
 
-  val show : t -> string
-
   val to_yojson : t -> Yojson.Safe.t
 
   val of_yojson : Yojson.Safe.t -> t Ppx_deriving_yojson_runtime.error_or
@@ -38,7 +36,7 @@ module PersistentLogEntry : sig
 
   val pp : Format.formatter -> t -> unit
 
-  val show_for_log : t -> string
+  val show : t -> string
 
   val to_yojson : t -> Yojson.Safe.t
 
@@ -52,11 +50,11 @@ end
 module PersistentLog : sig
   type t
 
-  val show : t -> string
-
   val load : state_dir:string -> t
 
   val to_string_list : t -> string list
+
+  val show : t -> string
 
   val log : t -> logger:Logger.t -> unit
 
@@ -77,8 +75,6 @@ end
 (** Volatile state on all servers *)
 module VolatileState : sig
   type t
-
-  val show : t -> string
 
   val create : unit -> t
 
@@ -114,8 +110,6 @@ module VolatileStateOnLeader : sig
   type peer
 
   type t = peer list
-
-  val show : t -> string
 
   val create : n:int -> last_log_index:int -> peer list
 

@@ -107,9 +107,7 @@ module PersistentLogEntry = struct
 
   let from_string s = s
 
-  let show_for_log t = Str.(global_replace (regexp "\n") "" (show t))
-
-  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ (show_for_log t))
+  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ (show t))
 end
 
 module PersistentLog = struct
@@ -129,7 +127,7 @@ module PersistentLog = struct
     sprintf
       "{PersistentLog.path = \"%s\"; last_index = %d; last_entries = [%s]}"
       t.path t.last_index
-      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show_for_log))
+      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
@@ -151,7 +149,7 @@ module PersistentLog = struct
                     failwith
                       (sprintf "Unexpected lower index in logs. cur:%d, log:%s"
                          !cur
-                         (PersistentLogEntry.show_for_log log));
+                         (PersistentLogEntry.show log));
                   cur := log.index;
                   log
               | Error err -> failwith (sprintf "Failed to parse JSON: %s" err))
@@ -160,7 +158,7 @@ module PersistentLog = struct
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
 
-  let to_string_list t = List.map t.list ~f:PersistentLogEntry.show_for_log
+  let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
     Logger.debug logger (sprintf "PersistentLog : %s" (show t))
@@ -312,7 +310,6 @@ module VolatileStateOnLeader = struct
   let create ~n ~last_log_index =
     List.init n ~f:(fun _ ->
         { next_index = last_log_index + 1; match_index = 0 })
-
 
   let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
 

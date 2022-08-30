@@ -14,25 +14,24 @@ open State
  * - If AppendEntries RPC received from new leader: convert to follower
  * - If election timeout elapses: start new election
  *)
+let mode = Some CANDIDATE
+
+let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
-  lock : Lwt_mutex.t;
-  dispatcher : Request_dispatcher.t;
   apply_log : apply_log;
   state : State.common;
   mutable next_mode : mode option;
 }
 
-let init ~(resource:Resource.t) ~apply_log ~state =
-  let logger = resource.logger in
-  Logger.mode logger ~mode:(Some CANDIDATE);
+let init ~conf ~apply_log ~state =
   {
-    conf = resource.conf;
-    logger = resource.logger;
-    lock = resource.lock;
-    dispatcher = resource.dispatcher;
+    conf;
+    logger =
+      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+        ~level:conf.log_level;
     apply_log;
     state;
     next_mode = None;
@@ -84,10 +83,10 @@ let request_vote t ~election_timer =
   in
   Lwt_list.map_p request (Conf.peer_nodes t.conf)
 
-let request_handler t ~election_timer =
-  let handler = Stdlib.Hashtbl.create 2 in
+let request_handlers t ~election_timer =
+  let handlers = Stdlib.Hashtbl.create 2 in
   let open Params in
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/append_entries")
     ( (fun json ->
         match append_entries_request_of_yojson json with
@@ -106,7 +105,7 @@ let request_handler t ~election_timer =
             ~handle_same_term_as_newer:true
             ~param:x
       | _ -> unexpected_request t);
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
         match request_vote_request_of_yojson json with
@@ -123,7 +122,7 @@ let request_handler t ~election_timer =
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~param:x
       | _ -> unexpected_request t);
-  handler
+  handlers
 
 let collect_votes t ~election_timer ~vote_request =
   ( vote_request >>= fun responses ->
@@ -181,13 +180,18 @@ let run t () =
   let election_timer =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
-  let handler = request_handler t ~election_timer in
-  ignore (Request_dispatcher.set_handler t.dispatcher ~handler);
+  let handlers = request_handlers t ~election_timer in
+  let server, stopper =
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
+  in
   (* Send RequestVote RPCs to all other servers *)
-  let vote_request = Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer) in
+  let vote_request = Lwt_mutex.with_lock lock (fun () -> request_vote t ~election_timer) in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =
-    Timer.start election_timer ~on_stop:(fun () -> Lwt.cancel vote_request)
+    Timer.start election_timer ~on_stop:(fun () ->
+        Lwt.wakeup stopper ();
+        Lwt.cancel vote_request)
   in
-  Lwt.choose [ election_timer_thread; received_votes; (Request_dispatcher.server t.dispatcher) ] >>= fun () ->
+  Lwt.join [ election_timer_thread; received_votes; server ] >>= fun () ->
   Lwt.return (next_mode t)

@@ -24,27 +24,25 @@ open State
  *   of matchIndex[i] ≥ N, and log[N].term == currentTerm:
  *   set commitIndex = N (§5.3, §5.4).
  *)
+let mode = Some LEADER
+
+let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
-  lock : Lwt_mutex.t;
-  dispatcher : Request_dispatcher.t;
   apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
   mutable last_request_ts : Time_ns.t option;
 }
 
-let init ~(resource:Resource.t) ~apply_log ~state =
-  let conf = resource.conf in
-  let logger = resource.logger in
-  Logger.mode logger ~mode:(Some LEADER);
+let init ~conf ~apply_log ~state =
   {
-    conf = resource.conf;
-    logger = resource.logger;
-    lock = resource.lock;
-    dispatcher = resource.dispatcher;
+    conf;
+    logger =
+      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+        ~level:conf.log_level;
     apply_log;
     state =
       {
@@ -238,15 +236,15 @@ let handle_client_command t ~(param : Params.client_command_request) =
   Cohttp_lwt_unix.Server.respond_string ~status ~body:response_body ()
 
 
-let request_handler t =
+let request_handlers t =
   let unexpected_request = fun () -> (
     Logger.error t.logger "Unexpected request";
     Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
   )
   in
-  let handler = Stdlib.Hashtbl.create 3 in
+  let handlers = Stdlib.Hashtbl.create 3 in
   let open Params in
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/append_entries")
     ( (fun json ->
         match append_entries_request_of_yojson json with
@@ -263,8 +261,9 @@ let request_handler t =
             ~cb_newer_term:(fun () -> step_down t)
             ~handle_same_term_as_newer:false
             ~param:x
-      | _ -> unexpected_request ());
-  Stdlib.Hashtbl.add handler
+      | _ -> unexpected_request ()
+);
+  Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
         match request_vote_request_of_yojson json with
@@ -280,7 +279,7 @@ let request_handler t =
             ~cb_newer_term:(fun () -> step_down t)
             ~param:x
       | _ -> unexpected_request ());
-  Stdlib.Hashtbl.add handler
+  Stdlib.Hashtbl.add handlers
     (`POST, "/client_command")
     ( (fun json ->
         match client_command_request_of_yojson json with
@@ -289,10 +288,10 @@ let request_handler t =
       function
       | CLIENT_COMMAND_REQUEST x -> handle_client_command t ~param:x
       | _ -> unexpected_request ());
-  handler
+  handlers
 
 
-let append_entries_thread t =
+let append_entries_thread t ~server_stopper =
   State.log_leader t.state ~logger:t.logger;
   let n = 20 in
   let sleep = heartbeat_span_sec t /. (float_of_int n) in
@@ -300,14 +299,16 @@ let append_entries_thread t =
   let rec loop () =
     if t.should_step_down
     then (
-      Logger.debug t.logger "Quiting Leader";
+      Logger.debug t.logger "Stopping server";
+      Lwt.wakeup server_stopper ();
+      Logger.debug t.logger "Stopped server";
       Lwt.return ()
     )
     else (
       let proc = if !i = 0 || !i >= n then (
         State.log_leader t.state ~logger:t.logger;
         i := 1;
-        Lwt_mutex.with_lock t.lock (fun () ->
+        Lwt_mutex.with_lock lock (fun () ->
           (* TODO: The result of append_entries can be ignored? *)
           append_entries t >>= fun _ -> Lwt.return ()
         )
@@ -330,10 +331,13 @@ let run t () =
   Logger.info t.logger @@
     Printf.sprintf "### Leader: Start (term:%d) ###" @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;
-  let handler = request_handler t in
-  ignore (Request_dispatcher.set_handler t.dispatcher ~handler);
+  let handlers = request_handlers t in
+  let server, server_stopper =
+    Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
+      ~lock ~table:handlers
+  in
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
-  let append_entries_thread = append_entries_thread t in
-  Lwt.choose [ append_entries_thread; (Request_dispatcher.server t.dispatcher) ] >>= fun () -> Lwt.return FOLLOWER
+  let append_entries_thread = append_entries_thread t ~server_stopper in
+  Lwt.join [ append_entries_thread; server ] >>= fun () -> Lwt.return FOLLOWER
