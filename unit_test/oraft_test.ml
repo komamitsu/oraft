@@ -6,7 +6,7 @@ let test_persistent_log_append _ =
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
     let tmpdir = Filename.concat Filename.temp_dir_name rand in
-    Unix.mkdir_p tmpdir;
+    Core_unix.mkdir_p tmpdir;
     try f tmpdir with _ -> FileUtil.rm ~recurse:true [ tmpdir ]
   in
   with_tmpdir (fun tmpdir ->

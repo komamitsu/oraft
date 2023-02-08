@@ -4,7 +4,7 @@ open Printf
 (* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
 module PersistentState = struct
-  type state = { mutable current_term : int; mutable voted_for : int option }
+  type state = { current_term : int; voted_for : int option }
   [@@deriving yojson]
 
   (* Just persistent format *)
@@ -21,7 +21,7 @@ module PersistentState = struct
 
   let load ~state_dir =
     let path = Filename.concat state_dir "state.json" in
-    match Sys.file_exists path with
+    match Sys_unix.file_exists path with
     | `Yes -> (
         match Yojson.Safe.from_file path |> state_of_yojson with
         | Ok state ->
@@ -131,7 +131,7 @@ module PersistentLog = struct
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
-    match Sys.file_exists path with
+    match Sys_unix.file_exists path with
     | `Yes ->
         let lines =
           In_channel.with_file path ~f:(fun ch -> In_channel.input_lines ch)

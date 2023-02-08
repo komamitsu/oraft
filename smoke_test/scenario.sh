@@ -89,9 +89,14 @@ function kill_all_servers() {
 trap kill_all_servers EXIT
 
 run_1st_server
+# These sleeps are to avoid conflicts on _build/.lock
+sleep 1
 run_2nd_server
+sleep 1
 run_3rd_server
+sleep 1
 run_4th_server
+sleep 1
 run_5th_server
 
 sleep $wait_after_launch

@@ -1,4 +1,4 @@
 (test
  (name oraft_test)
- (libraries oUnit fileutils oraft))
+ (libraries oUnit fileutils core_unix.command_unix oraft))
 
