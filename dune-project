@@ -23,7 +23,7 @@
   (ocaml (>= 4.05.0))
   dune
   (core (>= v0.9.0))
-  (core_unix.command_unix (>= v0.9.0))
+  (core_unix (>= v0.9.0))
   (cohttp-lwt-unix (>= 5.0.0))
   yojson
   lwt_ppx
