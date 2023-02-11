@@ -12,7 +12,7 @@ class LogIndenter
     verifier_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7})Z\s+(?<level>[A-Z]+)\s+(?<content>.*)/
 
     # e.g. 2022-08-13T13:29:29.5001053Z Attaching to oraft_chaos-delay_1, oraft_chaos-kill_1, oraft_chaos-pause_1, oraft-2, oraft-3, oraft-1, oraft-4, oraft-5
-    other_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7})Z\s+(?<content>.*)/
+    other_line_pattern = /\A(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7,9})Z\s+(?<content>.*)/
 
 
     STDIN.each_line do |line|
@@ -33,7 +33,7 @@ class LogIndenter
         print "\t"
         puts captured['content']
       else
-        raise "Unexpected line format: #{line}"
+        STDERR.puts "Unexpected line format: #{line}"
       end
     end
   end

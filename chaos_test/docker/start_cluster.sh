@@ -13,6 +13,8 @@ popd
 pushd $root_dir
 export DOCKER_CONF_DIR=./chaos_test/docker
 docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml up -d
-docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml logs -f --no-color &
+docker-compose --project-directory . -f chaos_test/docker/docker-compose.yml logs -f -t --no-color \
+    | awk -F' ' '{ts = $3; $3 = ""; print ts,$0}' \
+    | tee chaos_test_docker.log &
 popd
 

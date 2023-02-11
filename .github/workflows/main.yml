@@ -45,4 +45,6 @@ jobs:
         if: failure()
         with:
           name: chaos-test-logs-${{ matrix.ocaml-compiler }}
-          path: chaos_test/docker/oraft-*
+          path: |
+            chaos_test_sorted.log
+            chaos_test/docker/oraft-*/state/log.jsonl
