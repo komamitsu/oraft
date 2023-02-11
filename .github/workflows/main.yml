@@ -36,7 +36,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: smoke-test-logs
+          name: smoke-test-logs-${{ matrix.ocaml-compiler }}
           path: example/oraft-*
       - name: Chaos test
         run: opam exec -- chaos_test/run.sh
@@ -44,5 +44,5 @@ jobs:
         uses: actions/upload-artifact@v3
         if: failure()
         with:
-          name: chaos-test-logs
+          name: chaos-test-logs-${{ matrix.ocaml-compiler }}
           path: chaos_test/docker/oraft-*
