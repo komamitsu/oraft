@@ -7,7 +7,7 @@ root_dir=$script_dir/..
 verifier_dir=$root_dir/verifier
 
 pushd $root_dir
-rm chaos_test*.log
+rm -f chaos_test*.log
 popd
 
 pushd $script_dir
