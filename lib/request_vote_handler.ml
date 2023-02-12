@@ -28,8 +28,11 @@ let request_vote ~state ~logger ~cb_newer_term
      * least as up-to-date as receiver’s log, grant vote (§5.2, §5.4) *)
     let up_to_date_as_receiver_log =
       match last_log with
-      | Some x -> param.last_log_index > last_log_index ||
-          param.last_log_index = last_log_index && param.last_log_term = x.term
+      (* Raft determines which of two logs is more up-to-date by comparing the index and term of the last entries in the
+        logs. If the logs have last entries with different terms, then the log with the later term is more up-to-date. If the logs
+        end with the same term, then whichever log is longer is more up-to-date. *)
+      | Some x -> param.last_log_term > x.term ||
+        (param.last_log_term = x.term && param.last_log_index >= last_log_index)
       | None -> true
     in
     Logger.info logger
