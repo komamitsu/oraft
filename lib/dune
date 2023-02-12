@@ -1,6 +1,6 @@
 (library
  (name oraft)
  (public_name oraft)
- (libraries str core cohttp-lwt-unix yojson)
+ (libraries str core core_unix.command_unix cohttp-lwt-unix yojson)
  (preprocess (pps ppx_deriving.std ppx_deriving_yojson)))
 

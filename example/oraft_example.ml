@@ -5,8 +5,6 @@ let kvs = Hashtbl.create 64
 
 let ids = Hashtbl.create 4096
 
-let lock = Lwt_mutex.create ()
-
 let print_log s =
   (*
   let now = Core.Time.to_string (Core.Time.now ()) in
@@ -130,7 +128,7 @@ let server port (oraft : Oraft.t) =
   Server.create ~mode:(`TCP (`Port port)) (Server.make ~callback ())
 
 
-let main =
+let _ =
   let port, conf_file =
     let args = Core.Sys.get_argv () in
     if args |> Array.length >= 3

@@ -9,7 +9,7 @@ require 'optparse'
 
 $logger = Logger.new(STDOUT)
 STDOUT.sync = true
-$logger.formatter = proc {|level, datetime, progname, msg| "#{level} #{msg}\n"}
+$logger.formatter = proc {|level, datetime, progname, msg| "#{datetime.strftime '%FT%T.%NZ'} #{level} #{msg}\n"}
 $logger.level = Logger::DEBUG
 
 class Error

@@ -75,6 +75,7 @@ let start ~conf_file ~apply_log =
     Logger.create ~node_id:conf.node_id ~mode:None ~output_path:conf.log_file
       ~level:conf.log_level
   in
+  Logger.info logger "Starting Oraft";
   let post_command = post_command ~conf ~logger ~state in
   let initial_state_exec =
     Follower.run (Follower.init ~conf ~apply_log ~state)

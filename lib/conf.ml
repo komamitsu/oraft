@@ -17,8 +17,8 @@ let from_file file : t =
   let json = Yojson.Safe.from_file file in
   match of_yojson json with
   | Ok t ->
-      Unix.mkdir_p t.state_dir;
-      Unix.mkdir_p (Filename.dirname t.log_file);
+      Core_unix.mkdir_p t.state_dir;
+      Core_unix.mkdir_p (Filename.dirname t.log_file);
       t
   | Error err -> failwith (Printf.sprintf "Failed to parse JSON: %s" err)
 
