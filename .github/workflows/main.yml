@@ -46,5 +46,7 @@ jobs:
         with:
           name: chaos-test-logs-${{ matrix.ocaml-compiler }}
           path: |
-            chaos_test_sorted.log
+            chaos_test_*.log
+            chaos_test/docker/oraft-*/oraft.log
             chaos_test/docker/oraft-*/state/log.jsonl
+
