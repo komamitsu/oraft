@@ -105,6 +105,8 @@ module PersistentLogEntry = struct
 
   let empty = { term = 0; index = 0; data = "" }
 
+  let create ~index ~term ~data = { term; index; data }
+
   let from_string s = s
 
   let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ (show t))
@@ -113,6 +115,7 @@ end
 module PersistentLog = struct
   type t = {
     path : string;
+    db : Sqlite3.db;
     (* Just for convenience *)
     mutable last_index : int;
     (* log entries; each entry contains command for state machine,
@@ -129,6 +132,49 @@ module PersistentLog = struct
       t.path t.last_index
       (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
 
+  let exec_sql db ?(cb = (fun _ _ -> ())) sql =
+    let rc = Sqlite3.exec db ~cb sql in
+    match rc with
+    | OK -> ()
+    | _ -> failwith (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql (Sqlite3.Rc.to_string rc))
+
+  let setup_db ~path =
+    let db = Sqlite3.db_open path in
+    exec_sql db ~cb:(fun row _ ->
+      let count = Array.get row 0 in
+      match count with
+      | Some "0" -> exec_sql db "create table oraft_log (index int primary key, term int, data text)"
+      | Some "1" -> ()
+      | _ -> failwith "Failed to check table 'oraft_log'"
+    ) "select count() from sqlite_schema where name = 'oraft_log'";
+    db
+
+  let fetch_from_row row col_index =
+    match (Array.get row col_index) with
+    | Some x -> x
+    | None -> failwith (Printf.sprintf "Found unexpected empty value. index:%d" col_index)
+  
+  let load_records db =
+    let last_index = ref 1 in
+    let logs = ref [] in
+    (* TODO: Check if the index increases sequentially *)
+    exec_sql db ~cb:(fun row _ ->
+      let index = int_of_string (fetch_from_row row 0) in
+      let term = int_of_string (fetch_from_row row 1) in
+      let data = fetch_from_row row 2 in
+      last_index := index;
+      logs := PersistentLogEntry.create ~index ~term ~data :: !logs
+    )
+    "select index, term, data from oraft_log order by id";
+    (!last_index, !logs)
+
+  let load ~state_dir =
+    let path = Filename.concat state_dir "log.db" in
+    let db = setup_db ~path in
+    let (last_index, logs) = load_records db in
+    { db; path; last_index; list = logs }
+
+  (*
   let load ~state_dir =
     let path = Filename.concat state_dir "log.jsonl" in
     match Sys_unix.file_exists path with
@@ -157,6 +203,7 @@ module PersistentLog = struct
         in
         { path; last_index = !cur; list = logs }
     | _ -> { path; last_index = 0; list = [] }
+  *)
 
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
