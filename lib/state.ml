@@ -174,37 +174,6 @@ module PersistentLog = struct
     let (last_index, logs) = load_records db in
     { db; path; last_index; list = logs }
 
-  (*
-  let load ~state_dir =
-    let path = Filename.concat state_dir "log.jsonl" in
-    match Sys_unix.file_exists path with
-    | `Yes ->
-        let lines =
-          In_channel.with_file path ~f:(fun ch -> In_channel.input_lines ch)
-        in
-        let cur = ref 0 in
-        let logs =
-          List.map
-            ~f:(fun s ->
-              match
-                Yojson.Safe.from_string s |> PersistentLogEntry.of_yojson
-              with
-              | Ok log ->
-                  if log.index < !cur
-                  then
-                    failwith
-                      (sprintf "Unexpected lower index in logs. cur:%d, log:%s"
-                         !cur
-                         (PersistentLogEntry.show log));
-                  cur := log.index;
-                  log
-              | Error err -> failwith (sprintf "Failed to parse JSON: %s" err))
-            lines
-        in
-        { path; last_index = !cur; list = logs }
-    | _ -> { path; last_index = 0; list = [] }
-  *)
-
   let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
 
   let log t ~logger =
@@ -237,11 +206,11 @@ module PersistentLog = struct
         let entry : PersistentLogEntry.t =
           {
             term = entry_from_param.term;
-            index = i + 1;
+            index = i + 1;  (* Raft's log index is 1 origin *)
             data = entry_from_param.data;
           }
         in
-        t.last_index <- i + 1;
+        t.last_index <- i + 1;  (* Raft's log index is 1 origin *)
         let current, rest =
           let tl_entries = List.tl_exn entries in
           if i < List.length t.list
