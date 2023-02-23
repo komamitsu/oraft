@@ -116,21 +116,7 @@ module PersistentLog = struct
   type t = {
     path : string;
     db : Sqlite3.db;
-    (* Just for convenience *)
-    mutable last_index : int;
-    (* log entries; each entry contains command for state machine,
-     * and term when entry was received by leader (first index is 1) *)
-    mutable list : PersistentLogEntry.t list;
   }
-
-  let show t =
-    let len = List.length t.list in
-    let n = min len 3 in
-    let entries = List.sub t.list ~pos:(len - n) ~len:n in
-    sprintf
-      "{PersistentLog.path = \"%s\"; last_index = %d; last_entries = [%s]}"
-      t.path t.last_index
-      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
 
   let exec_sql db ?(cb = (fun _ _ -> ())) sql =
     let rc = Sqlite3.exec db ~cb sql in
@@ -153,84 +139,127 @@ module PersistentLog = struct
     match (Array.get row col_index) with
     | Some x -> x
     | None -> failwith (Printf.sprintf "Found unexpected empty value. index:%d" col_index)
+
+  let log_from_row row =
+    (* FIXME: This depends on the order of the SELECT statement *)
+    let index = int_of_string (fetch_from_row row 0) in
+    let term = int_of_string (fetch_from_row row 1) in
+    let data = fetch_from_row row 2 in
+    PersistentLogEntry.create ~index ~term ~data
   
-  let load_records db =
+(*
+  let check_records db =
     let last_index = ref 1 in
     let logs = ref [] in
     (* TODO: Check if the index increases sequentially *)
     exec_sql db ~cb:(fun row _ ->
-      let index = int_of_string (fetch_from_row row 0) in
-      let term = int_of_string (fetch_from_row row 1) in
-      let data = fetch_from_row row 2 in
+      let log = log_from_row row in
+      let index = log.index in
       last_index := index;
-      logs := PersistentLogEntry.create ~index ~term ~data :: !logs
+      logs := log :: !logs
     )
     "select index, term, data from oraft_log order by id";
     (!last_index, !logs)
+*)
 
   let load ~state_dir =
     let path = Filename.concat state_dir "log.db" in
     let db = setup_db ~path in
-    let (last_index, logs) = load_records db in
-    { db; path; last_index; list = logs }
+    { db; path }
 
-  let to_string_list t = List.map t.list ~f:PersistentLogEntry.show
+  let last_index t = 
+    let count = ref None in
+    exec_sql t.db ~cb:(fun row _ ->
+      count := Some (int_of_string (fetch_from_row row 0))
+    )
+    "select count(1) from oraft_log";
+    match !count with
+    | Some x -> x + 1  (* Raft's log index is 1 origin *)
+    | _ -> failwith "Failed to get the total record count"
 
-  let log t ~logger =
-    Logger.debug logger (sprintf "PersistentLog : %s" (show t))
+  let fetch t ?(asc = true) n =
+    let order = if asc then "asc" else "desc" in
+    let records = ref [] in
+    exec_sql t.db ~cb:(fun row _ ->
+      let r = log_from_row row in
+      records := r::!records
+    )
+    (* TODO: Use prepared statement *)
+    (Printf.sprintf "select index, term, data from oraft_log order by id %s limit %d" order n);
+    !records
 
-  let get t i = List.nth t.list (i - 1)
+  let show t =
+    let entries = fetch t ~asc:false 3 in
+    sprintf
+      "{PersistentLog.path = \"%s\"; last_index = %d; last_entries = [%s]}"
+      t.path
+      (last_index t)
+      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
 
-  let get_exn t i = List.nth_exn t.list (i - 1)
+  let log t ~logger = Logger.debug logger ("PersistentLog: " ^ (show t))
 
-  let last_index t = t.last_index
+  let get t i =
+    let record = ref None in
+    exec_sql t.db ~cb:(fun row _ ->
+      record := Some (log_from_row row)
+    )
+    (* TODO: Use prepared statement *)
+    (Printf.sprintf "select index, term, data from oraft_log where id = %d" i);
+    !record
+
+  let get_exn t i =
+    match get t i with
+    | Some x -> x
+    | _ -> failwith (Printf.sprintf "Failed to get the record. index=%d" i)
+
+  let set t (entry:PersistentLogEntry.t) =
+    exec_sql t.db ~cb:(fun _ _ -> ())
+    (* TODO: Use prepared statement *)
+    (* TODO: Check updated record count *)
+    (Printf.sprintf "update oraft_log set term = %d, data = '%s' where id = %d" entry.term entry.data entry.index)
+
+  let add t (entry:PersistentLogEntry.t) =
+    (* Maybe assertion of the previous entry would be good *)
+    exec_sql t.db ~cb:(fun _ _ -> ())
+    (* TODO: Use prepared statement *)
+    (Printf.sprintf "insert into oraft_log (id, term, data) values (%d, %d, '%s')" entry.index entry.term entry.data)
 
   let last_log t =
+    (* FIXME *)
     match get t (last_index t) with
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
-  let append_to_file t ~log =
-    Out_channel.with_file t.path ~append:true ~f:(fun ch ->
-        Out_channel.output_lines ch
-          [ PersistentLogEntry.to_yojson log |> Yojson.Safe.to_string ])
-
-  let append t ~term ~start ~entries =
-    let rec update_ xs i (entries : PersistentLogEntry.t list) =
-      if List.length entries = 0
-      then xs
-      else (
+  let append t ~start ~entries =
+    let rec loop i (entries : PersistentLogEntry.t list) =
+      if List.length entries > 0
+      then (
         (* New entry if needed *)
         let entry_from_param = List.hd_exn entries in
+        let rest_of_entries_from_param = List.tl_exn entries in
         (* TODO: Revisit here *)
         let entry : PersistentLogEntry.t =
           {
             term = entry_from_param.term;
-            index = i + 1;  (* Raft's log index is 1 origin *)
+            index = i;
             data = entry_from_param.data;
           }
         in
-        t.last_index <- i + 1;  (* Raft's log index is 1 origin *)
-        let current, rest =
-          let tl_entries = List.tl_exn entries in
-          if i < List.length t.list
-          then (
-            let x = List.nth_exn t.list i in
-            (* Raft's log index is 1 origin *)
-            if i < start - 1
-            then (x, entries)
-            else if x.term = term
-            then (x, tl_entries)
-            else (entry, tl_entries)
-          )
-          else (entry, tl_entries)
-        in
-        if phys_equal current entry then append_to_file t ~log:entry;
-        update_ (current :: xs) (i + 1) rest
+        let target_entry = get t i in
+        match target_entry with
+        | Some existing when existing.term = entry.term && existing.index = entry.index -> ()
+        | Some existing when existing.index = entry.index -> set t entry
+        | Some existing -> failwith (
+            sprintf "Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
+              (PersistentLogEntry.show existing)
+              (PersistentLogEntry.show entry)
+            )
+        | None -> add t entry
+        ;
+        loop (i + 1) rest_of_entries_from_param 
       )
     in
-    let rev_list = update_ [] 0 entries in
-    t.list <- List.rev rev_list
+    loop start entries
 end
 
 (* Volatile state on all servers *)

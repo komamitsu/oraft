@@ -219,7 +219,7 @@ let handle_client_command t ~(param : Params.client_command_request) =
        (Params.show_client_command_request param));
   let next_index = PersistentLog.last_index persistent_log + 1 in
   let term = PersistentState.current_term t.state.common.persistent_state in
-  PersistentLog.append persistent_log ~term ~start:next_index
+  PersistentLog.append persistent_log ~start:next_index
     ~entries:[ { term; index = next_index; data = param.data } ];
   append_entries t >>= fun result ->
   let status, response_body =

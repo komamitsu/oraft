@@ -23,7 +23,6 @@ let append_entries ~(conf : Conf.t) ~logger ~state
     ~cb_newer_term ~handle_same_term_as_newer =
   (* TODO: Revisit whether it's okay to update leader_id w/o any check *)
   VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
-  let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let volatile_state = state.volatile_state in
   if PersistentState.detect_newer_term state.persistent_state ~logger
@@ -53,7 +52,6 @@ let append_entries ~(conf : Conf.t) ~logger ~state
      *
      * Append any new entries not already in the log *)
     PersistentLog.append persistent_log
-      ~term:(PersistentState.current_term persistent_state)
       ~start:(param.prev_log_index + 1) ~entries:param.entries
   );
   (* All Servers:
