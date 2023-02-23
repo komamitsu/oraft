@@ -129,7 +129,7 @@ module PersistentLog = struct
     exec_sql db ~cb:(fun row _ ->
       let count = Array.get row 0 in
       match count with
-      | Some "0" -> exec_sql db "create table oraft_log (index int primary key, term int, data text)"
+      | Some "0" -> exec_sql db "create table if not exists oraft_log (index int primary key, term int, data text)"
       | Some "1" -> ()
       | _ -> failwith "Failed to check table 'oraft_log'"
     ) "select count() from sqlite_schema where name = 'oraft_log'";
