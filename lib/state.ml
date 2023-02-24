@@ -119,34 +119,31 @@ module PersistentLog = struct
     logger : Logger.t;
   }
 
-  let exec_sql ~db ~logger ?(cb = (fun _ _ -> ())) sql =
-    let rc = Sqlite3.exec db ~cb sql in
+  let exec_sql ~db ~logger ?(cb = (fun _ -> ())) sql =
+    let rc = Sqlite3.exec_not_null_no_headers db ~cb sql in
     match rc with
     | OK -> ()
     | _ -> Logger.error logger (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql (Sqlite3.Rc.to_string rc))
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    exec_sql ~db ~logger ~cb:(fun row _ ->
+    exec_sql ~db ~logger ~cb:(fun row ->
       let count = Array.get row 0 in
       match count with
-      | Some "0" -> exec_sql ~db ~logger
+      | "0" -> exec_sql ~db ~logger
         "create table if not exists oraft_log (\"index\" int primary key, \"term\" int, \"data\" text)"
-      | Some "1" -> ()
-      | _ -> Logger.error logger "Failed to check table 'oraft_log'"
+      | _ -> ()
     ) "select count() from sqlite_schema where name = 'oraft_log'";
     db
 
-  let fetch_from_row ~logger ~row ~col_index =
-    match (Array.get row col_index) with
-    | Some x -> x
-    | None -> (Logger.error logger (Printf.sprintf "Found unexpected empty value. index:%d" col_index); "0")
+  let fetch_from_row ~row ~col_index =
+    Array.get row col_index
 
-  let log_from_row ~logger ~row =
+  let log_from_row ~row =
     (* FIXME: This depends on the order of the SELECT statement *)
-    let index = int_of_string (fetch_from_row ~logger ~row ~col_index:0) in
-    let term = int_of_string (fetch_from_row ~logger ~row ~col_index:1) in
-    let data = fetch_from_row ~logger ~row ~col_index:2 in
+    let index = int_of_string (fetch_from_row ~row ~col_index:0) in
+    let term = int_of_string (fetch_from_row ~row ~col_index:1) in
+    let data = fetch_from_row ~row ~col_index:2 in
     PersistentLogEntry.create ~index ~term ~data
   
 (*
@@ -171,8 +168,8 @@ module PersistentLog = struct
 
   let last_index t = 
     let count = ref None in
-    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
-      count := Some (int_of_string (fetch_from_row ~logger:t.logger ~row ~col_index:0))
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row ->
+      count := Some (int_of_string (fetch_from_row ~row ~col_index:0))
     )
     "select count(1) from oraft_log";
     match !count with
@@ -182,8 +179,8 @@ module PersistentLog = struct
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in
     let records = ref [] in
-    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
-      let r = log_from_row ~logger:t.logger ~row in
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row ->
+      let r = log_from_row ~row in
       records := r::!records
     )
     (* TODO: Use prepared statement *)
@@ -202,8 +199,8 @@ module PersistentLog = struct
 
   let get t i =
     let record = ref None in
-    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
-      record := Some (log_from_row ~logger:t.logger ~row)
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row ->
+      record := Some (log_from_row ~row)
     )
     (* TODO: Use prepared statement *)
     (Printf.sprintf "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = %d" i);
@@ -215,14 +212,14 @@ module PersistentLog = struct
     | _ -> (Logger.error t.logger (Printf.sprintf "Failed to get the record. index=%d" i); PersistentLogEntry.empty)
 
   let set t (entry:PersistentLogEntry.t) =
-    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun _ _ -> ())
+    exec_sql ~db:t.db ~logger:t.logger
     (* TODO: Use prepared statement *)
     (* TODO: Check updated record count *)
     (Printf.sprintf "update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d" entry.term entry.data entry.index)
 
   let add t (entry:PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
-    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun _ _ -> ())
+    exec_sql ~db:t.db ~logger:t.logger
     (* TODO: Use prepared statement *)
     (Printf.sprintf "insert into oraft_log (\"index\", \"term\", \"data\") values (%d, %d, '%s')" entry.index entry.term entry.data)
 
