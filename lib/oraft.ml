@@ -13,10 +13,10 @@ type t = {
   current_state : unit -> current_state;
 }
 
-let state (conf : Conf.t) =
+let state ~(conf : Conf.t) ~logger =
   {
     persistent_state = PersistentState.load ~state_dir:conf.state_dir;
-    persistent_log = PersistentLog.load ~state_dir:conf.state_dir;
+    persistent_log = PersistentLog.load ~state_dir:conf.state_dir ~logger;
     volatile_state = VolatileState.create ();
   }
 
@@ -70,11 +70,11 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
 
 let start ~conf_file ~apply_log =
   let conf = Conf.from_file conf_file in
-  let state = state conf in
   let logger =
     Logger.create ~node_id:conf.node_id ~mode:None ~output_path:conf.log_file
       ~level:conf.log_level
   in
+  let state = state ~conf ~logger in
   Logger.info logger "Starting Oraft";
   let post_command = post_command ~conf ~logger ~state in
   let initial_state_exec =

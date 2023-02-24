@@ -50,7 +50,7 @@ end
 module PersistentLog : sig
   type t
 
-  val load : state_dir:string -> t
+  val load : state_dir:string -> logger:Logger.t -> t
 
   val show : t -> string
 

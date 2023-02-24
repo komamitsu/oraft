@@ -3,6 +3,9 @@ open OUnit2
 open Oraft__State
 
 let test_persistent_log_append _ =
+  (* FIXME: output_path *)
+  let logger = Oraft__Logger.create ~node_id:42 ~mode:None ~output_path:"/tmp/oraft_test.log" ~level:"INFO"
+  in 
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
     let tmpdir = Filename.concat Filename.temp_dir_name rand in
@@ -12,7 +15,7 @@ let test_persistent_log_append _ =
   in
   with_tmpdir (fun tmpdir ->
       (* Initial *)
-      let log = PersistentLog.load ~state_dir:tmpdir in
+      let log = PersistentLog.load ~state_dir:tmpdir ~logger in
       assert_equal None (PersistentLog.get log 1);
       assert_equal 0 (PersistentLog.last_index log);
       assert_equal 0 (PersistentLog.last_log log).term;
@@ -108,7 +111,7 @@ let test_persistent_log_append _ =
       assert_all log
       (* Load the state *)
       (* FIXME *)
-      (* let log = PersistentLog.load ~state_dir:tmpdir in *)
+      (* let log = PersistentLog.load ~state_dir:tmpdir ~logger in *)
       (* assert_all log *)
 )
 

@@ -116,35 +116,37 @@ module PersistentLog = struct
   type t = {
     path : string;
     db : Sqlite3.db;
+    logger : Logger.t;
   }
 
-  let exec_sql db ?(cb = (fun _ _ -> ())) sql =
+  let exec_sql ~db ~logger ?(cb = (fun _ _ -> ())) sql =
     let rc = Sqlite3.exec db ~cb sql in
     match rc with
     | OK -> ()
-    | _ -> failwith (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql (Sqlite3.Rc.to_string rc))
+    | _ -> Logger.error logger (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql (Sqlite3.Rc.to_string rc))
 
-  let setup_db ~path =
+  let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    exec_sql db ~cb:(fun row _ ->
+    exec_sql ~db ~logger ~cb:(fun row _ ->
       let count = Array.get row 0 in
       match count with
-      | Some "0" -> exec_sql db "create table if not exists oraft_log (index int primary key, term int, data text)"
+      | Some "0" -> exec_sql ~db ~logger
+        "create table if not exists oraft_log (\"index\" int primary key, \"term\" int, \"data\" text)"
       | Some "1" -> ()
-      | _ -> failwith "Failed to check table 'oraft_log'"
+      | _ -> Logger.error logger "Failed to check table 'oraft_log'"
     ) "select count() from sqlite_schema where name = 'oraft_log'";
     db
 
-  let fetch_from_row row col_index =
+  let fetch_from_row ~logger ~row ~col_index =
     match (Array.get row col_index) with
     | Some x -> x
-    | None -> failwith (Printf.sprintf "Found unexpected empty value. index:%d" col_index)
+    | None -> (Logger.error logger (Printf.sprintf "Found unexpected empty value. index:%d" col_index); "0")
 
-  let log_from_row row =
+  let log_from_row ~logger ~row =
     (* FIXME: This depends on the order of the SELECT statement *)
-    let index = int_of_string (fetch_from_row row 0) in
-    let term = int_of_string (fetch_from_row row 1) in
-    let data = fetch_from_row row 2 in
+    let index = int_of_string (fetch_from_row ~logger ~row ~col_index:0) in
+    let term = int_of_string (fetch_from_row ~logger ~row ~col_index:1) in
+    let data = fetch_from_row ~logger ~row ~col_index:2 in
     PersistentLogEntry.create ~index ~term ~data
   
 (*
@@ -162,30 +164,30 @@ module PersistentLog = struct
     (!last_index, !logs)
 *)
 
-  let load ~state_dir =
+  let load ~state_dir ~logger =
     let path = Filename.concat state_dir "log.db" in
-    let db = setup_db ~path in
-    { db; path }
+    let db = setup_db ~path ~logger in
+    { db; path; logger }
 
   let last_index t = 
     let count = ref None in
-    exec_sql t.db ~cb:(fun row _ ->
-      count := Some (int_of_string (fetch_from_row row 0))
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
+      count := Some (int_of_string (fetch_from_row ~logger:t.logger ~row ~col_index:0))
     )
     "select count(1) from oraft_log";
     match !count with
     | Some x -> x + 1  (* Raft's log index is 1 origin *)
-    | _ -> failwith "Failed to get the total record count"
+    | _ -> (Logger.error t.logger "Failed to get the total record count"; 0)
 
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in
     let records = ref [] in
-    exec_sql t.db ~cb:(fun row _ ->
-      let r = log_from_row row in
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
+      let r = log_from_row ~logger:t.logger ~row in
       records := r::!records
     )
     (* TODO: Use prepared statement *)
-    (Printf.sprintf "select index, term, data from oraft_log order by id %s limit %d" order n);
+    (Printf.sprintf "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit %d" order n);
     !records
 
   let show t =
@@ -200,29 +202,29 @@ module PersistentLog = struct
 
   let get t i =
     let record = ref None in
-    exec_sql t.db ~cb:(fun row _ ->
-      record := Some (log_from_row row)
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun row _ ->
+      record := Some (log_from_row ~logger:t.logger ~row)
     )
     (* TODO: Use prepared statement *)
-    (Printf.sprintf "select index, term, data from oraft_log where id = %d" i);
+    (Printf.sprintf "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = %d" i);
     !record
 
   let get_exn t i =
     match get t i with
     | Some x -> x
-    | _ -> failwith (Printf.sprintf "Failed to get the record. index=%d" i)
+    | _ -> (Logger.error t.logger (Printf.sprintf "Failed to get the record. index=%d" i); PersistentLogEntry.empty)
 
   let set t (entry:PersistentLogEntry.t) =
-    exec_sql t.db ~cb:(fun _ _ -> ())
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun _ _ -> ())
     (* TODO: Use prepared statement *)
     (* TODO: Check updated record count *)
-    (Printf.sprintf "update oraft_log set term = %d, data = '%s' where id = %d" entry.term entry.data entry.index)
+    (Printf.sprintf "update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d" entry.term entry.data entry.index)
 
   let add t (entry:PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
-    exec_sql t.db ~cb:(fun _ _ -> ())
+    exec_sql ~db:t.db ~logger:t.logger ~cb:(fun _ _ -> ())
     (* TODO: Use prepared statement *)
-    (Printf.sprintf "insert into oraft_log (id, term, data) values (%d, %d, '%s')" entry.index entry.term entry.data)
+    (Printf.sprintf "insert into oraft_log (\"index\", \"term\", \"data\") values (%d, %d, '%s')" entry.index entry.term entry.data)
 
   let last_log t =
     (* FIXME *)
@@ -249,7 +251,7 @@ module PersistentLog = struct
         match target_entry with
         | Some existing when existing.term = entry.term && existing.index = entry.index -> ()
         | Some existing when existing.index = entry.index -> set t entry
-        | Some existing -> failwith (
+        | Some existing -> Logger.error t.logger (
             sprintf "Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
               (PersistentLogEntry.show existing)
               (PersistentLogEntry.show entry)
