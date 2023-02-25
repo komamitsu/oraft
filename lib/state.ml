@@ -229,36 +229,26 @@ module PersistentLog = struct
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
 
-  let append t ~start ~entries =
-    let rec loop i (entries : PersistentLogEntry.t list) =
+  let append t ~entries =
+    let rec loop (entries : PersistentLogEntry.t list) =
       if List.length entries > 0
       then (
-        (* New entry if needed *)
-        let entry_from_param = List.hd_exn entries in
+        let entry = List.hd_exn entries in
         let rest_of_entries_from_param = List.tl_exn entries in
-        (* TODO: Revisit here *)
-        let entry : PersistentLogEntry.t =
-          {
-            term = entry_from_param.term;
-            index = i;
-            data = entry_from_param.data;
-          }
-        in
-        let target_entry = get t i in
+        let target_entry = get t entry.index in (
         match target_entry with
-        | Some existing when existing.term = entry.term && existing.index = entry.index -> ()
-        | Some existing when existing.index = entry.index -> set t entry
+        | Some existing when entry.term > existing.term && entry.index = existing.index -> set t entry
+        | Some existing when entry.index = existing.index -> ()
         | Some existing -> Logger.error t.logger (
             sprintf "Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
               (PersistentLogEntry.show existing)
               (PersistentLogEntry.show entry)
             )
-        | None -> add t entry
-        ;
-        loop (i + 1) rest_of_entries_from_param 
+        | None -> add t entry);
+        loop rest_of_entries_from_param 
       )
     in
-    loop start entries
+    loop entries
 end
 
 (* Volatile state on all servers *)

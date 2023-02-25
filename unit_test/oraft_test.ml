@@ -22,7 +22,6 @@ let test_persistent_log_append _ =
       assert_equal 0 (PersistentLog.last_log log).index;
       (* Add a log *)
       PersistentLog.append log
-        ~start:(PersistentLog.last_index log + 1)
         ~entries:[ { term = 1; index = 1; data = "First" } ];
       (* Current status:
          - index:1, term:1, data:First
@@ -37,7 +36,6 @@ let test_persistent_log_append _ =
 
       (* Add another log *)
       PersistentLog.append log
-        ~start:(PersistentLog.last_index log + 1)
         ~entries:[ { term = 2; index = 2; data = "Second" } ];
       (* Current status:
          - index:1, term:1, data:First
@@ -54,7 +52,6 @@ let test_persistent_log_append _ =
       (* Add more 2 logs overriding the last log,
        * but it's the same term and the old entry should remain *)
       PersistentLog.append log
-        ~start:(PersistentLog.last_index log + 0)
         ~entries:
           [
             { term = 2; index = 2; data = "Second" };
@@ -79,7 +76,6 @@ let test_persistent_log_append _ =
 
       (* Add more 2 logs overriding the last log with different term *)
       PersistentLog.append log
-        ~start:(PersistentLog.last_index log + 0)
         ~entries:
           [
             { term = 3; index = 3; data = "Third2" };

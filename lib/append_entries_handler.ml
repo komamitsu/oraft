@@ -51,8 +51,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
      *  follow it (§5.3)
      *
      * Append any new entries not already in the log *)
-    PersistentLog.append persistent_log
-      ~start:(param.prev_log_index + 1) ~entries:param.entries
+    PersistentLog.append persistent_log ~entries:param.entries
   );
   (* All Servers:
    * - If commitIndex > lastApplied: increment lastApplied, apply

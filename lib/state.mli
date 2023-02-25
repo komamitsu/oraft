@@ -64,8 +64,7 @@ module PersistentLog : sig
 
   val last_log : t -> PersistentLogEntry.t
 
-  val append :
-    t -> start:int -> entries:PersistentLogEntry.t list -> unit
+  val append : t -> entries:PersistentLogEntry.t list -> unit
 end
 
 (** Volatile state on all servers *)
