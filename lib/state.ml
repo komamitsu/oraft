@@ -173,8 +173,8 @@ module PersistentLog = struct
     )
     "select count(1) from oraft_log";
     match !count with
-    | Some x -> x + 1  (* Raft's log index is 1 origin *)
-    | _ -> (Logger.error t.logger "Failed to get the total record count"; 0)
+    | Some x -> x
+    | _ -> (Logger.error t.logger "Failed to get the total record count"; -1)
 
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in

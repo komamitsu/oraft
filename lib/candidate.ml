@@ -14,7 +14,7 @@ open State
  * - If AppendEntries RPC received from new leader: convert to follower
  * - If election timeout elapses: start new election
  *)
-let mode = Some CANDIDATE
+let mode = CANDIDATE
 
 let lock = Lwt_mutex.create ()
 
@@ -31,7 +31,7 @@ let init ~conf ~apply_log ~state =
     conf;
     logger =
       Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level;
+        ~level:conf.log_level ();
     apply_log;
     state;
     next_mode = None;

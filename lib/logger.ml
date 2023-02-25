@@ -5,7 +5,7 @@ type level = TRACE | DEBUG | INFO | WARN | ERROR
 type t = {
   node_id : int;
   mode : Base.mode option;
-  output_path : string;
+  output_path : string option;
   level : level;
 }
 
@@ -35,7 +35,7 @@ let level_of_string s =
   | _ -> failwith (Printf.sprintf "Unexpected value: %s" s)
 
 
-let create ~node_id ~mode ~output_path ~level =
+let create ~node_id ?mode ?output_path ~level () =
   { node_id; mode; output_path; level = level_of_string level }
 
 
@@ -45,16 +45,20 @@ let write t ~level ~msg =
   in
   if int_of_level level >= int_of_level t.level
   then
-    with_file t.output_path
-      ~f:(fun file ->
-        let now = Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ()) ~zone:Core.Time.Zone.utc in
-        let msg = Str.(global_replace (regexp "\n") "" msg) in
-        let s =
-          Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
-            t.node_id mode msg
-        in
-        ignore (output_string file s))
-      ~append:true
+    let now = Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ()) ~zone:Core.Time.Zone.utc in
+    let msg = Str.(global_replace (regexp "\n") "" msg) in
+    let s =
+      Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
+        t.node_id mode msg
+    in
+    match t.output_path with
+      | Some output_path -> (
+        with_file output_path
+          ~f:(fun file ->
+            ignore (output_string file s))
+          ~append:true
+      )
+      | None -> print_endline s
 
 
 let debug t msg = write t ~level:DEBUG ~msg

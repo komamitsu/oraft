@@ -4,9 +4,10 @@ type t
 
 val create :
   node_id:int ->
-  mode:Base.mode option ->
-  output_path:string ->
+  ?mode:Base.mode ->
+  ?output_path:string ->
   level:string ->
+  unit ->
   t
 
 val debug : t -> string -> unit

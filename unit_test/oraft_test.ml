@@ -4,7 +4,7 @@ open Oraft__State
 
 let test_persistent_log_append _ =
   (* FIXME: output_path *)
-  let logger = Oraft__Logger.create ~node_id:42 ~mode:None ~output_path:"/tmp/oraft_test.log" ~level:"INFO"
+  let logger = Oraft__Logger.create ~node_id:42 ~level:"INFO" ()
   in 
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
@@ -123,4 +123,4 @@ let suite =
 
 let () =
   Printexc.record_backtrace true;
-  ignore (run_test_tt_main suite)
+  run_test_tt_main suite

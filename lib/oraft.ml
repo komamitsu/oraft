@@ -71,8 +71,8 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
 let start ~conf_file ~apply_log =
   let conf = Conf.from_file conf_file in
   let logger =
-    Logger.create ~node_id:conf.node_id ~mode:None ~output_path:conf.log_file
-      ~level:conf.log_level
+    Logger.create ~node_id:conf.node_id ~output_path:conf.log_file
+      ~level:conf.log_level ()
   in
   let state = state ~conf ~logger in
   Logger.info logger "Starting Oraft";
