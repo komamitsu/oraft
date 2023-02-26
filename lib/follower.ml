@@ -20,7 +20,6 @@ type t = {
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
-  mutable next_mode : mode;
 }
 
 let init ~conf ~apply_log ~state =
@@ -31,7 +30,6 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level ();
     apply_log;
     state;
-    next_mode = CANDIDATE
   }
 
 let unexpected_request t =
@@ -100,4 +98,4 @@ let run t () =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return t.next_mode
+  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return CANDIDATE
