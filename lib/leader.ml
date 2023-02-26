@@ -24,7 +24,7 @@ open State
  *   of matchIndex[i] ≥ N, and log[N].term == currentTerm:
  *   set commitIndex = N (§5.3, §5.4).
  *)
-let mode = Some LEADER
+let mode = LEADER
 
 let lock = Lwt_mutex.create ()
 
@@ -42,7 +42,7 @@ let init ~conf ~apply_log ~state =
     conf;
     logger =
       Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level;
+        ~level:conf.log_level ();
     apply_log;
     state =
       {
@@ -219,7 +219,7 @@ let handle_client_command t ~(param : Params.client_command_request) =
        (Params.show_client_command_request param));
   let next_index = PersistentLog.last_index persistent_log + 1 in
   let term = PersistentState.current_term t.state.common.persistent_state in
-  PersistentLog.append persistent_log ~term ~start:next_index
+  PersistentLog.append persistent_log
     ~entries:[ { term; index = next_index; data = param.data } ];
   append_entries t >>= fun result ->
   let status, response_body =

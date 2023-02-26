@@ -11,7 +11,7 @@ open State
   *   convert to candidate
   *)
 
-let mode = Some FOLLOWER
+let mode = FOLLOWER
 
 let lock = Lwt_mutex.create ()
 
@@ -28,7 +28,7 @@ let init ~conf ~apply_log ~state =
     conf;
     logger =
       Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level;
+        ~level:conf.log_level ();
     apply_log;
     state;
     next_mode = CANDIDATE

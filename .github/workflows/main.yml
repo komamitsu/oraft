@@ -30,6 +30,8 @@ jobs:
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '3.1'
+      - name: Install SQLite3 dev-tool
+        run: sudo apt update && sudo apt install -y libsqlite3-dev
       - name: Smoke test
         run: opam exec -- smoke_test/run.sh
       - name: Archive the smoke test logs and status

@@ -3,6 +3,9 @@ open OUnit2
 open Oraft__State
 
 let test_persistent_log_append _ =
+  (* FIXME: output_path *)
+  let logger = Oraft__Logger.create ~node_id:42 ~level:"INFO" ()
+  in 
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
     let tmpdir = Filename.concat Filename.temp_dir_name rand in
@@ -12,14 +15,13 @@ let test_persistent_log_append _ =
   in
   with_tmpdir (fun tmpdir ->
       (* Initial *)
-      let log = PersistentLog.load ~state_dir:tmpdir in
+      let log = PersistentLog.load ~state_dir:tmpdir ~logger in
       assert_equal None (PersistentLog.get log 1);
       assert_equal 0 (PersistentLog.last_index log);
       assert_equal 0 (PersistentLog.last_log log).term;
       assert_equal 0 (PersistentLog.last_log log).index;
       (* Add a log *)
-      PersistentLog.append log ~term:1
-        ~start:(PersistentLog.last_index log + 1)
+      PersistentLog.append log
         ~entries:[ { term = 1; index = 1; data = "First" } ];
       (* Current status:
          - index:1, term:1, data:First
@@ -33,8 +35,7 @@ let test_persistent_log_append _ =
       assert_equal 1 (PersistentLog.last_log log).index;
 
       (* Add another log *)
-      PersistentLog.append log ~term:2
-        ~start:(PersistentLog.last_index log + 1)
+      PersistentLog.append log
         ~entries:[ { term = 2; index = 2; data = "Second" } ];
       (* Current status:
          - index:1, term:1, data:First
@@ -50,8 +51,7 @@ let test_persistent_log_append _ =
 
       (* Add more 2 logs overriding the last log,
        * but it's the same term and the old entry should remain *)
-      PersistentLog.append log ~term:2
-        ~start:(PersistentLog.last_index log + 0)
+      PersistentLog.append log
         ~entries:
           [
             { term = 2; index = 2; data = "Second" };
@@ -75,8 +75,7 @@ let test_persistent_log_append _ =
       assert_equal 3 (PersistentLog.last_log log).index;
 
       (* Add more 2 logs overriding the last log with different term *)
-      PersistentLog.append log ~term:4
-        ~start:(PersistentLog.last_index log + 0)
+      PersistentLog.append log
         ~entries:
           [
             { term = 3; index = 3; data = "Third2" };
@@ -108,7 +107,7 @@ let test_persistent_log_append _ =
       assert_all log
       (* Load the state *)
       (* FIXME *)
-      (* let log = PersistentLog.load ~state_dir:tmpdir in *)
+      (* let log = PersistentLog.load ~state_dir:tmpdir ~logger in *)
       (* assert_all log *)
 )
 
@@ -120,4 +119,4 @@ let suite =
 
 let () =
   Printexc.record_backtrace true;
-  ignore (run_test_tt_main suite)
+  run_test_tt_main suite

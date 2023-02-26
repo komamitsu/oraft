@@ -50,9 +50,7 @@ end
 module PersistentLog : sig
   type t
 
-  val load : state_dir:string -> t
-
-  val to_string_list : t -> string list
+  val load : state_dir:string -> logger:Logger.t -> t
 
   val show : t -> string
 
@@ -66,10 +64,7 @@ module PersistentLog : sig
 
   val last_log : t -> PersistentLogEntry.t
 
-  val append_to_file : t -> log:PersistentLogEntry.t -> unit
-
-  val append :
-    t -> term:int -> start:int -> entries:PersistentLogEntry.t list -> unit
+  val append : t -> entries:PersistentLogEntry.t list -> unit
 end
 
 (** Volatile state on all servers *)
