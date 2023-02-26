@@ -20,7 +20,6 @@ type t = {
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
-  mutable next_mode : mode;
 }
 
 let init ~conf ~apply_log ~state =
@@ -31,7 +30,6 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level ();
     apply_log;
     state;
-    next_mode = CANDIDATE
   }
 
 let unexpected_request t =
@@ -57,7 +55,7 @@ let request_handlers t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
+            ~cb_newer_term:(fun () -> ())
             ~handle_same_term_as_newer:false
             ~param:x
       | _ -> unexpected_request t);
@@ -77,7 +75,7 @@ let request_handlers t ~election_timer =
                * RPC from current leader or granting vote to candidate:
                * convert to candidate *)
             ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> t.next_mode <- FOLLOWER)
+            ~cb_newer_term:(fun () -> ())
             ~param:x
       | _ -> unexpected_request t);
 
@@ -100,4 +98,4 @@ let run t () =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return t.next_mode
+  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return CANDIDATE
