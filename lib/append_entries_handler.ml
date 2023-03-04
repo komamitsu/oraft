@@ -43,9 +43,12 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       (min param.leader_commit (PersistentLog.last_index persistent_log));
   if List.length param.entries > 0
   then (
+    let first_entry = List.hd_exn param.entries in
     Logger.debug logger
-      (Printf.sprintf "This param isn't empty, so appending entries(lentgh: %d)"
-         (List.length param.entries));
+      (Printf.sprintf "This param isn't empty, so appending entries(lentgh: %d, first_entry.term: %d, first_entry.index: %d)"
+          first_entry.term
+          first_entry.index
+          (List.length param.entries));
     (* If an existing entry conflicts with a new one (same index
      *  but different terms), delete the existing entry and all that
      *  follow it (§5.3)

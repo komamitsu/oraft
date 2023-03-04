@@ -252,6 +252,7 @@ let request_handlers t =
         | Error _ as e -> e),
       function
       | APPEND_ENTRIES_REQUEST x ->
+          (* TODO: Revisit here. Is it okay to append logs immediately if it's valid...? *)
           Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
             ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
@@ -261,8 +262,7 @@ let request_handlers t =
             ~cb_newer_term:(fun () -> step_down t)
             ~handle_same_term_as_newer:false
             ~param:x
-      | _ -> unexpected_request ()
-);
+      | _ -> unexpected_request ());
   Stdlib.Hashtbl.add handlers
     (`POST, "/request_vote")
     ( (fun json ->
@@ -286,7 +286,14 @@ let request_handlers t =
         | Ok x -> Ok (CLIENT_COMMAND_REQUEST x)
         | Error _ as e -> e),
       function
-      | CLIENT_COMMAND_REQUEST x -> handle_client_command t ~param:x
+      | CLIENT_COMMAND_REQUEST x ->
+        if t.should_step_down then (
+          Logger.info t.logger "Avoiding handling client_command since it's stepping down";
+          Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
+        )
+        else (
+          handle_client_command t ~param:x
+        )
       | _ -> unexpected_request ());
   handlers
 
