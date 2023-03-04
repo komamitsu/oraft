@@ -6,6 +6,6 @@ script_dir=$(dirname $0)
 
 pushd $script_dir
 bundle install
-bundle exec verifier
+bundle exec verifier $@
 popd
 

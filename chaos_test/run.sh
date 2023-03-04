@@ -28,5 +28,5 @@ teardown () {
 }
 trap teardown EXIT
 
-$verifier_dir/run.sh | tee chaos_test_verifier.log
+$verifier_dir/run.sh -m set -c 2048 -k 2048 | tee chaos_test_verifier.log
 
