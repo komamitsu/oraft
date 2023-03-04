@@ -133,6 +133,16 @@ class Verifier
     "key-#{i % @key_size}"
   end
 
+  def run
+    initialize_values
+
+    update_values
+
+    verify_values
+  end
+end
+
+class IncrementVerifier < Verifier
   def initialize_values
     @key_size.times.each do |i|
       k = key(i)
@@ -198,18 +208,79 @@ class Verifier
       false
     end
   end
+end
 
-  def run
-    initialize_values
+class KeySetVerifier < Verifier
+  def initialize_values
+    # Assert
+    unless @count == @key_size
+      raise "@count and @key_size must be same. count:#{@count}, key_size:#{@key_size}"
+    end
+  end
 
-    update_values
+  def update_values
+    Parallel.each(0...@count, :in_threads => @concurrency) do |i|
+      sleep(@wait_ms / 1000.0)
+      retry_count = 0
+      loop do
+        request_id = "set-#{i}"
+        label = "set-#{i}-#{retry_count}"
+        value = i
+        if retry_count >= RETRY
+          throw_exception("[#{label}] Retry over (SET): i='#{i}'")
+        end
 
-    verify_values
+        k = key(i)
+        $logger.debug "[#{label}] Sending"
+
+        if send_command(label, request_id, "SET #{k} #{value}")
+          @expected_kvs[k] = value
+          $logger.debug "[#{label}] updated #{k}: expected_kvs=#{@expected_kvs[k]}"
+          break
+        end
+
+        wait(0.1, 2, 1.5, retry_count)
+        retry_count += 1
+      end
+    end
+  end
+
+  def verify_values
+    $logger.info "================================================================================"
+    $logger.info "Result"
+    $logger.info "--------------------------------------------------------------------------------"
+    failed = 0
+
+    expected = @expected_kvs.keys.to_set
+    raise "Expected keys length from KVS is wrong: expected_keys_len: #{@count}, keys_len_from_kvs: #{expected}" unless @count == expected.size
+
+    @clients.each_with_index do |client, i|
+      v = send_command("verify-#{i}", nil, "KEYS", client).split(',').to_set
+      if v == expected
+        $logger.info "Success: expected.size=#{expected.size}"
+      else
+        unexpected = v - expected
+        missing = expected - v
+        $logger.info "Failed:  unexpected=#{unexpected}, missing=#{missing}"
+        failed += unexpected.size + missing.size
+      end
+    end
+    $logger.info "--------------------------------------------------------------------------------"
+
+    $logger.info
+    if failed == 0
+      $logger.info "All good"
+      true
+    else
+      $logger.info "Detected any failure: failed_count=#{failed}"
+      false
+    end
   end
 end
 
 if $0 == __FILE__
   options = {
+    mode: :incr,
     concurrency: 8,
     key_size: 16,
     count: 2048,
@@ -217,29 +288,48 @@ if $0 == __FILE__
   }
 
   OptionParser.new do |opts|
-    opts.on("-C", "--concurrency CONCURRENCY", "Concurrency") do |v|
+    opts.on("-m", "--mode MODE", "Verification mode: (incr|set). The default is `incr`") do |v|
+      raise "Unexpected value: #{v}" unless ['incr', 'set'].include?(v)
+      options[:mode] = v.to_sym
+    end
+
+    opts.on("-C", "--concurrency CONCURRENCY. The default is 8", "Concurrency") do |v|
       options[:concurrency] = Integer(v)
     end
 
-    opts.on("-k", "--key-size KEY_SIZE", "Key size") do |v|
+    opts.on("-k", "--key-size KEY_SIZE. The default is 16", "Key size") do |v|
       options[:key_size] = Integer(v)
     end
 
-    opts.on("-c", "--count COUNT", "Count") do |v|
+    opts.on("-c", "--count COUNT. The default is 2048", "Count") do |v|
       options[:count] = Integer(v)
     end
 
-    opts.on("-w", "--wait-ms WAIT_MS", "Wait (ms)") do |v|
+    opts.on("-w", "--wait-ms WAIT_MS. The default is 400", "Wait (ms)") do |v|
       options[:wait_ms] = Integer(v)
     end
 
   end.parse!
 
-  if Verifier.new(
+  verifier = case options[:mode]
+  when :incr
+    IncrementVerifier.new(
       options[:concurrency],
       options[:key_size],
       options[:count],
-      options[:wait_ms]).run
+      options[:wait_ms])
+  when :set
+    KeySetVerifier.new(
+      options[:concurrency],
+      options[:key_size],
+      options[:count],
+      options[:wait_ms]
+    )
+  else
+    raise "Unexpected mode: #{options[:mode]}"
+  end
+
+  if verifier.run
     exit 0
   else
     exit 1

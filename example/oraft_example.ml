@@ -120,6 +120,11 @@ let server port (oraft : Oraft.t) =
                     | Some x -> (`OK, x)
                     | None -> (`Not_found, "")
                     ))
+          | "KEYS" ->
+            let key_seq = Hashtbl.to_seq_keys kvs in
+            let keys = Seq.fold_left (fun acc x -> x::acc) [] key_seq in
+            let csv = String.concat "," keys in
+              handle_or_proxy oraft request_body (fun () -> Lwt.return (`OK, csv))
           | _ -> Lwt.return (`Bad_request, "") )
         >>= fun (status_code, response_body) ->
         Server.respond_string ~status:status_code ~body:response_body ()
