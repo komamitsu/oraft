@@ -21,5 +21,5 @@ trap "kill $pid_of_scenario" EXIT
 
 sleep $wait_after_launch
 
-$verifier_dir/run.sh -c $verifier_count -w $verifier_wait_ms
+$verifier_dir/run.sh
 
