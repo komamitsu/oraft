@@ -119,7 +119,8 @@ let send_request t i ~request_json ~entries ~prev_log_index =
           (* If AppendEntries fails because of log inconsistency:
            *  decrement nextIndex and retry (§5.3) *)
           let next_index = VolatileStateOnLeader.next_index leader_state i in
-          VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
+          if next_index > 1 then
+            VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
           Error "Need to try with decremented index"
       | Error _ as err -> err)
 
