@@ -64,6 +64,18 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       let log = PersistentLog.get_exn persistent_log i in
       apply_log ~node_id:conf.node_id ~log_index:log.index ~log_data:log.data)
 
+let log_error_req ~state ~logger ~msg ~(param : Params.append_entries_request) =
+  let entries_size = List.length param.entries in
+  let persistent_log = state.persistent_log in
+    Logger.warn logger
+      (Printf.sprintf
+        "%s. param:{term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d, first_entry:%s, last_entry:%s}, state:%s"
+        msg param.term param.leader_id param.prev_log_term param.prev_log_index
+        entries_size
+        param.leader_commit
+        (PersistentLogEntry.show (List.nth_exn param.entries 0))
+        (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
+        (PersistentLog.show persistent_log))
 
 let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
     ~cb_newer_term ~handle_same_term_as_newer
@@ -71,32 +83,26 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let stored_prev_log = PersistentLog.get persistent_log param.prev_log_index in
-  cb_valid_request ();
   let result =
-    if PersistentState.detect_old_leader persistent_state ~logger
-         ~other_term:param.term
+    if PersistentState.detect_old_leader persistent_state ~logger ~other_term:param.term
+    then (
        (* Reply false if term < currentTerm (§5.1) *)
-    then false
+      log_error_req ~state ~logger ~msg:"Received append_entries req that has old team" ~param;
+      false
+    )
     else if (not (param.prev_log_term = -1 && param.prev_log_index = 0))
             &&
             match stored_prev_log with
             | Some l -> l.term <> param.prev_log_term
             | None -> true
     then (
-      let entries_size = List.length param.entries in
+      cb_valid_request ();
       (* Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
-      Logger.warn logger
-        (Printf.sprintf
-          "Received a request that doesn't meet requirement.param:{term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d, first_entry:%s, last_entry:%s}, state:%s"
-          param.term param.leader_id param.prev_log_term param.prev_log_index
-          entries_size
-          param.leader_commit
-          (PersistentLogEntry.show (List.nth_exn param.entries 0))
-          (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
-          (PersistentLog.show persistent_log));
+      log_error_req ~state ~logger ~msg:"Received append_entries req that has unexpected prev_log" ~param;
       false
     )
     else (
+      cb_valid_request ();
       append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term ~handle_same_term_as_newer;
       State.log state ~logger;
       true
