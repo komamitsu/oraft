@@ -83,7 +83,6 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   let stored_prev_log = PersistentLog.get persistent_log param.prev_log_index in
-  cb_valid_request ();
   let result =
     if PersistentState.detect_old_leader persistent_state ~logger ~other_term:param.term
     then (
@@ -97,11 +96,13 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request
             | Some l -> l.term <> param.prev_log_term
             | None -> true
     then (
+      cb_valid_request ();
       (* Reply false if log doesn’t contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
       log_error_req ~state ~logger ~msg:"Received append_entries req that has unexpected prev_log" ~param;
       false
     )
     else (
+      cb_valid_request ();
       append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term ~handle_same_term_as_newer;
       State.log state ~logger;
       true
