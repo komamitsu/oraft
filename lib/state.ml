@@ -146,21 +146,6 @@ module PersistentLog = struct
     let data = fetch_from_row ~row ~col_index:2 in
     PersistentLogEntry.create ~index ~term ~data
   
-(*
-  let check_records db =
-    let last_index = ref 1 in
-    let logs = ref [] in
-    (* TODO: Check if the index increases sequentially *)
-    exec_sql db ~cb:(fun row _ ->
-      let log = log_from_row row in
-      let index = log.index in
-      last_index := index;
-      logs := log :: !logs
-    )
-    "select index, term, data from oraft_log order by id";
-    (!last_index, !logs)
-*)
-
   let load ~state_dir ~logger =
     let path = Filename.concat state_dir "log.db" in
     let db = setup_db ~path ~logger in
@@ -211,11 +196,15 @@ module PersistentLog = struct
     | Some x -> x
     | _ -> (Logger.error t.logger (Printf.sprintf "Failed to get the record. index=%d" i); PersistentLogEntry.empty)
 
-  let set t (entry:PersistentLogEntry.t) =
+  let set_and_truncate_suffix t (entry:PersistentLogEntry.t) =
     exec_sql ~db:t.db ~logger:t.logger
     (* TODO: Use prepared statement *)
     (* TODO: Check updated record count *)
-    (Printf.sprintf "update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d" entry.term entry.data entry.index)
+    (Printf.sprintf "begin;
+      update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d;
+      delete from oraft_log where \"index\" > %d;
+      commit"
+      entry.term entry.data entry.index entry.index)
 
   let add t (entry:PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
@@ -236,14 +225,16 @@ module PersistentLog = struct
         let entry = List.hd_exn entries in
         let rest_of_entries_from_param = List.tl_exn entries in
         let target_entry = get t entry.index in (
+        (* If an existing entry conflicts with a new one (same index but different terms),
+          delete the existing entry and all that follow it (§5.3) *)
         match target_entry with
-        | Some existing when entry.term > existing.term && entry.index = existing.index -> set t entry
-        | Some existing when entry.index = existing.index -> ()
-        | Some existing -> Logger.error t.logger (
+        | Some existing when entry.index <> existing.index -> Logger.error t.logger (
             sprintf "Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
               (PersistentLogEntry.show existing)
               (PersistentLogEntry.show entry)
             )
+        | Some existing when entry.term <> existing.term -> set_and_truncate_suffix t entry
+        | Some _ -> ()
         | None -> add t entry);
         loop rest_of_entries_from_param 
       )
