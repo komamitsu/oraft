@@ -101,27 +101,31 @@ let send_request t i ~request_json ~entries ~prev_log_index =
     ~timeout_millis:t.conf.request_timeout_millis
     ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
-      | Ok param when param.success ->
-          (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
-          VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
-            (prev_log_index + List.length entries);
-          let match_index = VolatileStateOnLeader.match_index leader_state i in
-          VolatileStateOnLeader.set_next_index leader_state i (match_index + 1);
-          (* All Servers:
-           * - If RPC request or response contains term T > currentTerm:
-           *   set currentTerm = T, convert to follower (§5.1)
-           *)
+      | Ok param ->
           if PersistentState.detect_newer_term persistent_state ~logger:t.logger
                ~other_term:param.term
           then step_down t;
-          Ok (Params.APPEND_ENTRIES_RESPONSE param)
-      | Ok _ ->
-          (* If AppendEntries fails because of log inconsistency:
-           *  decrement nextIndex and retry (§5.3) *)
-          let next_index = VolatileStateOnLeader.next_index leader_state i in
-          if next_index > 1 then
-            VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
-          Error "Need to try with decremented index"
+
+          if param.success then (
+            (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
+            VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
+              (prev_log_index + List.length entries);
+            let match_index = VolatileStateOnLeader.match_index leader_state i in
+            VolatileStateOnLeader.set_next_index leader_state i (match_index + 1);
+            (* All Servers:
+            * - If RPC request or response contains term T > currentTerm:
+            *   set currentTerm = T, convert to follower (§5.1)
+            *)
+            Ok (Params.APPEND_ENTRIES_RESPONSE param)
+          )
+          else (
+            (* If AppendEntries fails because of log inconsistency:
+                *  decrement nextIndex and retry (§5.3) *)
+            let next_index = VolatileStateOnLeader.next_index leader_state i in
+            if next_index > 1 then
+              VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
+            Error "Need to try with decremented index"
+          )
       | Error _ as err -> err)
 
 
