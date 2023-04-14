@@ -46,9 +46,9 @@ let append_entries ~(conf : Conf.t) ~logger ~state
     let first_entry = List.hd_exn param.entries in
     Logger.debug logger
       (Printf.sprintf "This param isn't empty, so appending entries(lentgh: %d, first_entry.term: %d, first_entry.index: %d)"
+          (List.length param.entries)
           first_entry.term
-          first_entry.index
-          (List.length param.entries));
+          first_entry.index);
     (* If an existing entry conflicts with a new one (same index
      *  but different terms), delete the existing entry and all that
      *  follow it (§5.3)
