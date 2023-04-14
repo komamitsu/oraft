@@ -93,7 +93,7 @@ let request_handlers t ~election_timer =
         | Ok x -> Ok (APPEND_ENTRIES_REQUEST x)
         | Error _ as e -> e),
       function
-      | APPEND_ENTRIES_REQUEST x ->
+      | APPEND_ENTRIES_REQUEST x when is_none t.next_mode ->
           Append_entries_handler.handle ~conf:t.conf ~state:t.state
             ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> Timer.update election_timer)
@@ -112,7 +112,7 @@ let request_handlers t ~election_timer =
         | Ok x -> Ok (REQUEST_VOTE_REQUEST x)
         | Error _ as e -> e),
       function
-      | REQUEST_VOTE_REQUEST x ->
+      | REQUEST_VOTE_REQUEST x when is_none t.next_mode ->
           Request_vote_handler.handle ~state:t.state ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
               (* All Servers:

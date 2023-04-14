@@ -256,8 +256,7 @@ let request_handlers t =
         | Ok x -> Ok (APPEND_ENTRIES_REQUEST x)
         | Error _ as e -> e),
       function
-      | APPEND_ENTRIES_REQUEST x ->
-          (* TODO: Revisit here. Is it okay to append logs immediately if it's valid...? *)
+      | APPEND_ENTRIES_REQUEST x when not (t.should_step_down) ->
           Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
             ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
@@ -275,7 +274,7 @@ let request_handlers t =
         | Ok x -> Ok (REQUEST_VOTE_REQUEST x)
         | Error _ as e -> e),
       function
-      | REQUEST_VOTE_REQUEST x ->
+      | REQUEST_VOTE_REQUEST x when not (t.should_step_down) ->
           Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
               (* All Servers:
@@ -291,14 +290,7 @@ let request_handlers t =
         | Ok x -> Ok (CLIENT_COMMAND_REQUEST x)
         | Error _ as e -> e),
       function
-      | CLIENT_COMMAND_REQUEST x ->
-        if t.should_step_down then (
-          Logger.info t.logger "Avoiding handling client_command since it's stepping down";
-          Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
-        )
-        else (
-          handle_client_command t ~param:x
-        )
+      | CLIENT_COMMAND_REQUEST x when not (t.should_step_down) -> handle_client_command t ~param:x
       | _ -> unexpected_request ());
   handlers
 
