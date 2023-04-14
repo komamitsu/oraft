@@ -101,27 +101,31 @@ let send_request t i ~request_json ~entries ~prev_log_index =
     ~timeout_millis:t.conf.request_timeout_millis
     ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
-      | Ok param when param.success ->
-          (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
-          VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
-            (prev_log_index + List.length entries);
-          let match_index = VolatileStateOnLeader.match_index leader_state i in
-          VolatileStateOnLeader.set_next_index leader_state i (match_index + 1);
-          (* All Servers:
-           * - If RPC request or response contains term T > currentTerm:
-           *   set currentTerm = T, convert to follower (§5.1)
-           *)
+      | Ok param ->
           if PersistentState.detect_newer_term persistent_state ~logger:t.logger
                ~other_term:param.term
           then step_down t;
-          Ok (Params.APPEND_ENTRIES_RESPONSE param)
-      | Ok _ ->
-          (* If AppendEntries fails because of log inconsistency:
-           *  decrement nextIndex and retry (§5.3) *)
-          let next_index = VolatileStateOnLeader.next_index leader_state i in
-          if next_index > 1 then
-            VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
-          Error "Need to try with decremented index"
+
+          if param.success then (
+            (* If successful: update nextIndex and matchIndex for follower (§5.3) *)
+            VolatileStateOnLeader.set_match_index leader_state ~logger:t.logger i
+              (prev_log_index + List.length entries);
+            let match_index = VolatileStateOnLeader.match_index leader_state i in
+            VolatileStateOnLeader.set_next_index leader_state i (match_index + 1);
+            (* All Servers:
+            * - If RPC request or response contains term T > currentTerm:
+            *   set currentTerm = T, convert to follower (§5.1)
+            *)
+            Ok (Params.APPEND_ENTRIES_RESPONSE param)
+          )
+          else (
+            (* If AppendEntries fails because of log inconsistency:
+                *  decrement nextIndex and retry (§5.3) *)
+            let next_index = VolatileStateOnLeader.next_index leader_state i in
+            if next_index > 1 then
+              VolatileStateOnLeader.set_next_index leader_state i (next_index - 1);
+            Error "Need to try with decremented index"
+          )
       | Error _ as err -> err)
 
 
@@ -252,8 +256,7 @@ let request_handlers t =
         | Ok x -> Ok (APPEND_ENTRIES_REQUEST x)
         | Error _ as e -> e),
       function
-      | APPEND_ENTRIES_REQUEST x ->
-          (* TODO: Revisit here. Is it okay to append logs immediately if it's valid...? *)
+      | APPEND_ENTRIES_REQUEST x when not (t.should_step_down) ->
           Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
             ~logger:t.logger ~apply_log:t.apply_log
             ~cb_valid_request:(fun () -> ())
@@ -271,7 +274,7 @@ let request_handlers t =
         | Ok x -> Ok (REQUEST_VOTE_REQUEST x)
         | Error _ as e -> e),
       function
-      | REQUEST_VOTE_REQUEST x ->
+      | REQUEST_VOTE_REQUEST x when not (t.should_step_down) ->
           Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
             ~cb_valid_request:(fun () -> ())
               (* All Servers:
@@ -287,14 +290,7 @@ let request_handlers t =
         | Ok x -> Ok (CLIENT_COMMAND_REQUEST x)
         | Error _ as e -> e),
       function
-      | CLIENT_COMMAND_REQUEST x ->
-        if t.should_step_down then (
-          Logger.info t.logger "Avoiding handling client_command since it's stepping down";
-          Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
-        )
-        else (
-          handle_client_command t ~param:x
-        )
+      | CLIENT_COMMAND_REQUEST x when not (t.should_step_down) -> handle_client_command t ~param:x
       | _ -> unexpected_request ());
   handlers
 
