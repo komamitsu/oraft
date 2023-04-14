@@ -43,7 +43,9 @@ let stepdown t ~election_timer =
   ()
 
 let unexpected_request t =
-  Logger.error t.logger "Unexpected request";
+  Logger.error t.logger
+    (Printf.sprintf "Unexpected request (next_mode: %s)"
+      (match t.next_mode with Some x -> Base.show_mode x | None -> "-----"));
   Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
 
 let request_vote t ~election_timer =
@@ -154,8 +156,7 @@ let collect_votes t ~election_timer ~vote_request =
     Logger.info t.logger
       (Printf.sprintf
          "Didn't receive majority votes (received: %d, majority: %d). Trying again"
-         n majority);
-    t.next_mode <- Some CANDIDATE
+         n majority)
   );
   Lwt.return ()
 
@@ -163,7 +164,6 @@ let next_mode t =
   match t.next_mode with
   | Some x -> x
   | _ ->
-      Logger.error t.logger "Unexpected state";
       (* If election timeout elapses: start new election *)
       CANDIDATE
 
