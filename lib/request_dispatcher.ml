@@ -3,11 +3,8 @@ open Cohttp_lwt_unix
 open Lwt
 
 type key = Cohttp.Code.meth * string
-
 type converter = Yojson.Safe.t -> (Params.request, string) Result.t
-
 type response = (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
-
 type processor = Params.request -> response
 
 let create ~port ~logger ~lock
@@ -27,7 +24,8 @@ let create ~port ~logger ~lock
              ( match node_id with
              | Some x -> x
              | None -> failwith "Missing node_id in HTTP header"
-             ));
+             )
+          );
         match Stdlib.Hashtbl.find_opt table (meth, path) with
         | Some (converter, processor) -> (
             body |> Cohttp_lwt.Body.to_string >>= fun body ->
@@ -42,8 +40,11 @@ let create ~port ~logger ~lock
             Logger.debug logger
               (Printf.sprintf "Unknown request: %s %s"
                  (Cohttp.Code.string_of_method meth)
-                 path);
-            Server.respond_string ~status:`Not_found ~body:"" ())
+                 path
+              );
+            Server.respond_string ~status:`Not_found ~body:"" ()
+    )
   in
   ( Server.create ~stop ~mode:(`TCP (`Port port)) (Server.make ~callback ()),
-    server_stopper )
+    server_stopper
+  )

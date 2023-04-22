@@ -4,13 +4,13 @@ open Oraft__State
 
 let test_persistent_log_append _ =
   (* FIXME: output_path *)
-  let logger = Oraft__Logger.create ~node_id:42 ~level:"INFO" ()
-  in 
+  let logger = Oraft__Logger.create ~node_id:42 ~level:"INFO" () in
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
     let tmpdir = Filename.concat Filename.temp_dir_name rand in
     Core_unix.mkdir_p tmpdir;
-    Fun.protect (fun () -> f tmpdir)
+    Fun.protect
+      (fun () -> f tmpdir)
       ~finally:(fun () -> FileUtil.rm ~recurse:true [ tmpdir ])
   in
   with_tmpdir (fun tmpdir ->
@@ -25,7 +25,7 @@ let test_persistent_log_append _ =
         ~entries:[ { term = 1; index = 1; data = "First" } ];
       (* Current status:
          - index:1, term:1, data:First
-       *)
+      *)
       let l = PersistentLog.get_exn log 1 in
       assert_equal 1 l.term;
       assert_equal 1 l.index;
@@ -40,7 +40,7 @@ let test_persistent_log_append _ =
       (* Current status:
          - index:1, term:1, data:First
          - index:2, term:2, data:Second
-       *)
+      *)
       let l = PersistentLog.get_exn log 2 in
       assert_equal 2 l.term;
       assert_equal 2 l.index;
@@ -61,7 +61,7 @@ let test_persistent_log_append _ =
          - index:1, term:1, data:First
          - index:2, term:2, data:Second
          - index:3, term:2, data:Third
-       *)
+      *)
       let l = PersistentLog.get_exn log 2 in
       assert_equal 2 l.term;
       assert_equal 2 l.index;
@@ -86,7 +86,7 @@ let test_persistent_log_append _ =
          - index:2, term:2, data:Second
          - index:3, term:3, data:Third2
          - index:4, term:4, data:Fourth
-       *)
+      *)
       let assert_all log =
         let l = PersistentLog.get_exn log 2 in
         assert_equal 2 l.term;
@@ -109,7 +109,7 @@ let test_persistent_log_append _ =
       (* FIXME *)
       (* let log = PersistentLog.load ~state_dir:tmpdir ~logger in *)
       (* assert_all log *)
-)
+  )
 
 
 let suite =

@@ -14,7 +14,6 @@ let span timeout_millis =
 
 
 let update t = t.timeout <- Time_ns.add (Time_ns.now ()) (span t.timeout_millis)
-
 let is_timed_out t = Time_ns.( < ) t.timeout (Time_ns.now ())
 
 let start t ~on_stop =

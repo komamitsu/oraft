@@ -130,5 +130,17 @@ $ curl -X POST --data-binary 'GET b' http://localhost:8181/command
 43
 ```
 
+## Development
 
+### Pre-commit hook
+
+This project uses [pre-commit](https://pre-commit.com/) to automate code format and so on as much as possible. Please [install pre-commit](https://pre-commit.com/#installation) and the git hook script as follows.
+
+```
+$ ls -a .pre-commit-config.yaml
+.pre-commit-config.yaml
+$ pre-commit install
+```
+
+The code formatter is automatically executed when commiting files. A commit will fail and be formatted by the formatter when any invalid code format is detected. Try to commit the change again.
 

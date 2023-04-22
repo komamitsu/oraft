@@ -44,27 +44,26 @@ let write t ~level ~msg =
     match t.mode with Some x -> Base.show_mode x | None -> "--------"
   in
   if int_of_level level >= int_of_level t.level
-  then
-    let now = Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ()) ~zone:Core.Time.Zone.utc in
+  then (
+    let now =
+      Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ())
+        ~zone:Core.Time.Zone.utc
+    in
     let msg = Str.(global_replace (regexp "\n") "" msg) in
     let s =
       Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
         t.node_id mode msg
     in
     match t.output_path with
-      | Some output_path -> (
+    | Some output_path ->
         with_file output_path
-          ~f:(fun file ->
-            ignore (output_string file s))
+          ~f:(fun file -> ignore (output_string file s))
           ~append:true
-      )
-      | None -> print_endline s
+    | None -> print_endline s
+  )
 
 
 let debug t msg = write t ~level:DEBUG ~msg
-
 let info t msg = write t ~level:INFO ~msg
-
 let warn t msg = write t ~level:WARN ~msg
-
 let error t msg = write t ~level:ERROR ~msg

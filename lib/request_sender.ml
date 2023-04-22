@@ -16,7 +16,8 @@ let handle_response ~logger ~converter ~node ~resp ~body =
         Logger.error logger
           (Printf.sprintf
              "Received an error response from node %d. err: %s, body: %s"
-             node.id err body);
+             node.id err body
+          );
         None
   )
   else (
@@ -38,13 +39,16 @@ let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
   let timeout : Params.response option Lwt.t =
     Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) >>= fun () ->
     Logger.warn logger
-      (Printf.sprintf "Request timeout. node_id: %d, url_path: %s" node.id url_path);
+      (Printf.sprintf "Request timeout. node_id: %d, url_path: %s" node.id
+         url_path
+      );
     Lwt.return None
   in
   let send_req node =
     Client.post ~body:request_param ~headers
       (Uri.of_string
-         (Printf.sprintf "http://%s:%d/%s" node.host node.port url_path))
+         (Printf.sprintf "http://%s:%d/%s" node.host node.port url_path)
+      )
     >>= fun (resp, body) ->
     body |> Cohttp_lwt.Body.to_string >|= fun body ->
     try handle_response ~logger ~converter ~node ~resp ~body
@@ -52,7 +56,8 @@ let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
       let msg = Stdlib.Printexc.to_string e in
       Logger.error logger
         (Printf.sprintf "Failed to handle response body. node_id: %d, error: %s"
-           node.id msg);
+           node.id msg
+        );
       None
   in
   Lwt.catch
@@ -61,5 +66,7 @@ let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
       let msg = Stdlib.Printexc.to_string e in
       Logger.error logger
         (Printf.sprintf "Failed to send a request. node_id: %d, error: %s"
-           node.id msg);
-      Lwt.return None)
+           node.id msg
+        );
+      Lwt.return None
+    )
