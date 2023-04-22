@@ -17,32 +17,34 @@ let request_vote ~state ~logger ~cb_newer_term
   let last_log_index = PersistentLog.last_index persistent_log in
   let last_log = PersistentLog.get persistent_log last_log_index in
   (* Reply false if term < currentTerm (§5.1) *)
-  if PersistentState.detect_old_leader persistent_state ~logger ~other_term:param.term
+  if PersistentState.detect_old_leader persistent_state ~logger
+       ~other_term:param.term
   then false
   else (
-    if PersistentState.detect_newer_term persistent_state ~logger ~other_term:param.term
-    then cb_newer_term ()
-    ;
+    if PersistentState.detect_newer_term persistent_state ~logger
+         ~other_term:param.term
+    then cb_newer_term ();
 
     (* If votedFor is null or candidateId, and candidate’s log is at
      * least as up-to-date as receiver’s log, grant vote (§5.2, §5.4) *)
     let up_to_date_as_receiver_log =
       match last_log with
       (* Raft determines which of two logs is more up-to-date by comparing the index and term of the last entries in the
-        logs. If the logs have last entries with different terms, then the log with the later term is more up-to-date. If the logs
-        end with the same term, then whichever log is longer is more up-to-date. *)
-      | Some x -> param.last_log_term > x.term ||
-        (param.last_log_term = x.term && param.last_log_index >= last_log_index)
+         logs. If the logs have last entries with different terms, then the log with the later term is more up-to-date. If the logs
+         end with the same term, then whichever log is longer is more up-to-date. *)
+      | Some x ->
+          param.last_log_term > x.term
+          || param.last_log_term = x.term
+             && param.last_log_index >= last_log_index
       | None -> true
     in
     Logger.info logger
       (Printf.sprintf
-        "RequestVote's log info is up-to-date? %B (param: {term: %d, index: %d}, last_log: {term: %d, index: %d})"
-        up_to_date_as_receiver_log
-        param.last_log_term
-        param.last_log_index
-        (match last_log with Some x -> x.term | None -> -1)
-        last_log_index);
+         "RequestVote's log info is up-to-date? %B (param: {term: %d, index: %d}, last_log: {term: %d, index: %d})"
+         up_to_date_as_receiver_log param.last_log_term param.last_log_index
+         (match last_log with Some x -> x.term | None -> -1)
+         last_log_index
+      );
 
     match PersistentState.voted_for persistent_state with
     | Some v when param.candidate_id = v -> up_to_date_as_receiver_log
@@ -63,13 +65,15 @@ let handle ~state ~logger ~cb_valid_request ~cb_newer_term
     Logger.debug logger
       (Printf.sprintf
          "Received request_vote that meets the requirement. param:%s"
-         (Params.show_request_vote_request param))
+         (Params.show_request_vote_request param)
+      )
   )
   else
     Logger.debug logger
       (Printf.sprintf
          "Received request_vote, but param didn't meet the requirement. param:%s"
-         (Params.show_request_vote_request param));
+         (Params.show_request_vote_request param)
+      );
   State.log state ~logger;
   let response_body =
     let record : Params.request_vote_response =

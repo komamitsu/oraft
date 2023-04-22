@@ -3,7 +3,6 @@ open Base
 open State
 
 type leader_node = { host : string; port : int }
-
 type current_state = { mode : mode; term : int; leader : leader_node option }
 
 type t = {
@@ -44,12 +43,13 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   let request =
     Request_sender.post ~node_id:conf.node_id ~logger ~url_path:"client_command"
       ~request_json
-      (* Afford to allow a connection timeout to unavailable server *)
+        (* Afford to allow a connection timeout to unavailable server *)
       ~timeout_millis:(conf.request_timeout_millis * 2)
       ~converter:(fun response_json ->
         match Params.client_command_response_of_yojson response_json with
         | Ok param -> Ok (Params.CLIENT_COMMAND_RESPONSE param)
-        | Error _ as err -> err)
+        | Error _ as err -> err
+    )
   in
   match VolatileState.leader_id state.volatile_state with
   | Some node_id ->
@@ -96,5 +96,6 @@ let start ~conf_file ~apply_log =
               Some { host = leader.host; port = leader.app_port }
           | None -> None
         in
-        { mode; term; leader });
+        { mode; term; leader }
+      );
   }
