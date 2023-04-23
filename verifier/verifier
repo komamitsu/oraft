@@ -245,36 +245,57 @@ class KeySetVerifier < Verifier
     end
   end
 
+  def separator_line
+    $logger.info "--------------------------------------------------------------------------------"
+  end
+
   def verify_values
     $logger.info "================================================================================"
     $logger.info "Result"
-    $logger.info "--------------------------------------------------------------------------------"
-    failed = 0
+    separator_line
 
     expected = @expected_kvs.keys.to_set
     raise "Expected keys length from KVS is wrong: expected_keys_len: #{@count}, keys_len_from_kvs: #{expected}" unless @count == expected.size
 
-    @clients.each_with_index do |client, i|
-      v = send_command("verify-#{i}", nil, "KEYS", client).split(',').to_set
-      if v == expected
-        $logger.info "Success: expected.size=#{expected.size}"
-      else
-        unexpected = v - expected
-        missing = expected - v
-        $logger.info "Failed:  unexpected=#{unexpected}, missing=#{missing}"
-        failed += unexpected.size + missing.size
+    checker = lambda do
+      failed = 0
+      @clients.each_with_index do |client, i|
+        v = send_command("verify-#{i}", nil, "KEYS", client).split(',').to_set
+        if v == expected
+          $logger.info "Success: expected.size=#{expected.size}"
+        else
+          unexpected = v - expected
+          missing = expected - v
+          $logger.info "Failed:  unexpected=#{unexpected}, missing=#{missing}"
+          failed += 1
+        end
       end
+
+      failed
     end
-    $logger.info "--------------------------------------------------------------------------------"
+
+
+    failed = checker.call
 
     $logger.info
     if failed == 0
       $logger.info "All good"
-      true
-    else
-      $logger.info "Detected any failure: failed_count=#{failed}"
-      false
+      separator_line
+      return true
+    elsif failed <= (expected / 2)
+      $logger.info "Detected a few failures: failed_count=#{failed}. But it's possible that one or two nodes hasn't applied latest entries. Let me check again..."
+      sleep 5
+      failed = checker.call
+      if failed == 0
+        $logger.info "All good"
+        separator_line
+        return true
+      end
     end
+
+    $logger.info "Detected too many failures: failed_count=#{failed}"
+    separator_line
+    return false
   end
 end
 
