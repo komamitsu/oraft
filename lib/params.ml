@@ -1,5 +1,5 @@
 type append_entries_request = {
-  (* leader$B!G(Bs term *)
+  (* leader's term *)
   term : int;
   (* so follower can redirect clients *)
   leader_id : int;
@@ -10,7 +10,7 @@ type append_entries_request = {
   (* log entries to store (empty for heartbeat;
    * may send more than one for efficiency) *)
   entries : State.PersistentLogEntry.t list;
-  (* leaderCommit leader$B!G(Bs commitIndex *)
+  (* leaderCommit leader's commitIndex *)
   leader_commit : int;
 }
 [@@deriving show, yojson]
@@ -25,13 +25,13 @@ type append_entries_response = {
 [@@deriving show, yojson]
 
 type request_vote_request = {
-  (* candidate$B!G(Bs term *)
+  (* candidate's term *)
   term : int;
   (* candidate requesting vote *)
   candidate_id : int;
-  (* index of candidate$B!G(Bs last log entry ($B!x(B5.4) *)
+  (* index of candidate's last log entry (§5.4) *)
   last_log_term : int;
-  (* term of candidate$B!G(Bs last log entry ($B!x(B5.4) *)
+  (* term of candidate's last log entry (§5.4) *)
   last_log_index : int;
 }
 [@@deriving show, yojson]
