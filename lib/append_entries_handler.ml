@@ -51,14 +51,14 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       );
     (* If an existing entry conflicts with a new one (same index
      *  but different terms), delete the existing entry and all that
-     *  follow it ($B!x(B5.3)
+     *  follow it (§5.3)
      *
      * Append any new entries not already in the log *)
     PersistentLog.append persistent_log ~entries:param.entries
   );
   (* All Servers:
    * - If commitIndex > lastApplied: increment lastApplied, apply
-   *   log[lastApplied] to state machine ($B!x(B5.3)
+   *   log[lastApplied] to state machine (§5.3)
    *)
   VolatileState.apply_logs volatile_state ~logger ~f:(fun i ->
       let log = PersistentLog.get_exn persistent_log i in
@@ -89,7 +89,7 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
     if PersistentState.detect_old_leader persistent_state ~logger
          ~other_term:param.term
     then (
-      (* Reply false if term < currentTerm ($B!x(B5.1) *)
+      (* Reply false if term < currentTerm (§5.1) *)
       log_error_req ~state ~logger
         ~msg:"Received append_entries req that has old team" ~param;
       false
@@ -101,7 +101,7 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
             | None -> true
     then (
       cb_valid_request ();
-      (* Reply false if log doesn$B!G(Bt contain an entry at prevLogIndex whose term matches prevLogTerm ($B!x(B5.3) *)
+      (* Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3) *)
       log_error_req ~state ~logger
         ~msg:"Received append_entries req that has unexpected prev_log" ~param;
       false

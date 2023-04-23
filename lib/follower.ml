@@ -3,7 +3,7 @@ open Lwt
 open Base
 open State
 
-(** Followers ($B!x(B5.2):
+(** Followers (§5.2):
   * - Respond to RPCs from candidates and leaders
   *
   * - If election timeout elapses without receiving AppendEntries

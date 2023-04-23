@@ -2,12 +2,12 @@ open Core
 open Cohttp_lwt_unix
 open State
 
-(* Invoked by candidates to gather votes ($B!x(B5.2).
+(* Invoked by candidates to gather votes (§5.2).
  *
  * Receiver implementation:
- * 1. Reply false if term < currentTerm ($B!x(B5.1)
- * 2. If votedFor is null or candidateId, and candidate$B!G(Bs log is at
- *    least as up-to-date as receiver$B!G(Bs log, grant vote ($B!x(B5.2, $B!x(B5.4)
+ * 1. Reply false if term < currentTerm (§5.1)
+ * 2. If votedFor is null or candidateId, and candidate's log is at
+ *    least as up-to-date as receiver's log, grant vote (§5.2, §5.4)
  *)
 
 let request_vote ~state ~logger ~cb_newer_term
@@ -16,7 +16,7 @@ let request_vote ~state ~logger ~cb_newer_term
   let persistent_log = state.persistent_log in
   let last_log_index = PersistentLog.last_index persistent_log in
   let last_log = PersistentLog.get persistent_log last_log_index in
-  (* Reply false if term < currentTerm ($B!x(B5.1) *)
+  (* Reply false if term < currentTerm (§5.1) *)
   if PersistentState.detect_old_leader persistent_state ~logger
        ~other_term:param.term
   then false
@@ -25,8 +25,8 @@ let request_vote ~state ~logger ~cb_newer_term
          ~other_term:param.term
     then cb_newer_term ();
 
-    (* If votedFor is null or candidateId, and candidate$B!G(Bs log is at
-     * least as up-to-date as receiver$B!G(Bs log, grant vote ($B!x(B5.2, $B!x(B5.4) *)
+    (* If votedFor is null or candidateId, and candidate's log is at
+     * least as up-to-date as receiver's log, grant vote (§5.2, §5.4) *)
     let up_to_date_as_receiver_log =
       match last_log with
       (* Raft determines which of two logs is more up-to-date by comparing the index and term of the last entries in the

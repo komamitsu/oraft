@@ -4,7 +4,7 @@ open Base
 open State
 
 (*
- * Candidates ($B!x(B5.2):
+ * Candidates (§5.2):
  * - On conversion to candidate, start election:
  *   - Increment currentTerm
  *   - Vote for self
@@ -75,7 +75,7 @@ let request_vote t ~election_timer =
         | Ok param ->
             (* All Servers:
              * - If RPC request or response contains term T > currentTerm:
-             *   set currentTerm = T, convert to follower ($B!x(B5.1)
+             *   set currentTerm = T, convert to follower (§5.1)
              *)
             if PersistentState.detect_newer_term persistent_state
                  ~logger:t.logger ~other_term:param.term
@@ -105,7 +105,7 @@ let request_handlers t ~election_timer =
             )
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower ($B!x(B5.1) *)
+               *   set currentTerm = T, convert to follower (§5.1) *)
               (* If AppendEntries RPC received from new leader: convert to follower *)
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~handle_same_term_as_newer:true ~param:x
@@ -124,7 +124,7 @@ let request_handlers t ~election_timer =
             )
               (* All Servers:
                * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower ($B!x(B5.1)
+               *   set currentTerm = T, convert to follower (§5.1)
                *)
             ~cb_newer_term:(fun () -> stepdown t ~election_timer)
             ~param:x
