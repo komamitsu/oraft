@@ -88,7 +88,8 @@ let prepare_entries t i =
   (prev_log_index, prev_log_term, List.filter_map ~f:(fun x -> x) entries)
 
 
-let send_request t i ~request_json ~entries ~prev_log_index =
+let send_request_and_update_peer_info t i ~request_json ~entries ~prev_log_index
+    =
   let persistent_state = t.state.common.persistent_state in
   let leader_state = t.state.volatile_state_on_leader in
   Logger.debug t.logger
@@ -165,7 +166,7 @@ let request_append_entry t i =
     in
     Params.append_entries_request_to_yojson r
   in
-  send_request t i ~entries ~request_json ~prev_log_index
+  send_request_and_update_peer_info t i ~entries ~request_json ~prev_log_index
 
 
 let append_entries t =
@@ -211,6 +212,21 @@ let append_entries t =
     t.last_request_ts <- Some (Time_ns.now ());
     Lwt.return result
   )
+
+
+let send_append_entries_if_needed t =
+  let leader_state = t.state.volatile_state_on_leader in
+  let now = Time_ns.now () in
+  Lwt_list.mapi_p
+    (fun i node ->
+      let next_heartbeat =
+        VolatileStateOnLeader.next_heartbeat leader_state i
+      in
+      if Time_ns.is_earlier now ~than:next_heartbeat
+      then request_append_entry t i node
+      else Lwt.return_none
+    )
+    (Conf.peer_nodes t.conf)
 
 
 let heartbeat_span_sec t =
@@ -333,13 +349,12 @@ let append_entries_thread t ~server_stopper =
           State.log_leader t.state ~logger:t.logger;
           i := 1;
           Lwt_mutex.with_lock lock (fun () ->
-              (* TODO: The result of append_entries can be ignored? *)
-              append_entries t >>= fun _ -> Lwt.return ()
+              send_append_entries_if_needed t >>= fun _ -> Lwt.return_unit
           )
         )
         else (
           i := !i + 1;
-          Lwt.return ()
+          Lwt.return_unit
         )
       in
       proc >>= fun () ->

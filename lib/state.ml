@@ -365,12 +365,15 @@ end
  * (Reinitialized after election) *)
 module VolatileStateOnLeader = struct
   type peer = {
-    (* for each server, index of the next log entry to send
+    (* For each server, index of the next log entry to send
      * to that server (initialized to leader last log index + 1) *)
     mutable next_index : int;
-    (* for each server, index of highest log entry known to be replicated on server
+    (* For each server, index of highest log entry known to be replicated on server
      * (initialized to 0, increases monotonically) *)
     mutable match_index : int;
+    (* Next heartbeat timing. This isn't mentioned on the original paper *)
+    (* TODO: Fix "opaque" *)
+    mutable next_heartbeat : Time_ns.t; [@opaque]
   }
   [@@deriving show]
 
@@ -378,7 +381,11 @@ module VolatileStateOnLeader = struct
 
   let create ~n ~last_log_index =
     List.init n ~f:(fun _ ->
-        { next_index = last_log_index + 1; match_index = 0 }
+        {
+          next_index = last_log_index + 1;
+          match_index = 0;
+          next_heartbeat = Time_ns.min_value_representable;
+        }
     )
 
 
@@ -398,9 +405,11 @@ module VolatileStateOnLeader = struct
     else peer.match_index <- x
 
 
+  let set_next_heartbeat t i x = (get t i).next_heartbeat <- x
   let show_nth_peer t i = get t i |> show_peer
   let next_index t i = (get t i).next_index
   let match_index t i = (get t i).match_index
+  let next_heartbeat t i = (get t i).next_heartbeat
 end
 
 type common = {
