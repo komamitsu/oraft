@@ -215,6 +215,7 @@ let append_entries t =
 
 
 let send_append_entries_if_needed t =
+  let interval = Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis () in
   let leader_state = t.state.volatile_state_on_leader in
   let now = Time_ns.now () in
   Lwt_list.mapi_p
@@ -223,7 +224,11 @@ let send_append_entries_if_needed t =
         VolatileStateOnLeader.next_heartbeat leader_state i
       in
       if Time_ns.is_earlier now ~than:next_heartbeat
-      then request_append_entry t i node
+      then (
+        let next_heartbeat = Time_ns.add now interval in
+        VolatileStateOnLeader.set_next_heartbeat leader_state i next_heartbeat;
+        request_append_entry t i node
+      )
       else Lwt.return_none
     )
     (Conf.peer_nodes t.conf)
