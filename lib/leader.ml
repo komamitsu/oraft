@@ -223,7 +223,7 @@ let send_append_entries_if_needed t =
       let next_heartbeat =
         VolatileStateOnLeader.next_heartbeat leader_state i
       in
-      if Time_ns.is_earlier now ~than:next_heartbeat
+      if Time_ns.is_earlier next_heartbeat ~than:now
       then (
         let next_heartbeat = Time_ns.add now interval in
         VolatileStateOnLeader.set_next_heartbeat leader_state i next_heartbeat;
