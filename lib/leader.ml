@@ -278,7 +278,10 @@ let handle_client_command t ~(param : Params.client_command_request) =
 
 let request_handlers t =
   let unexpected_request () =
-    Logger.error t.logger "Unexpected request";
+    Logger.error t.logger
+      (sprintf "Unexpected request. should_step_down=%s\n"
+         (string_of_bool t.should_step_down)
+      );
     Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
   in
   let handlers = Stdlib.Hashtbl.create 3 in
@@ -354,7 +357,13 @@ let append_entries_thread t ~server_stopper =
           State.log_leader t.state ~logger:t.logger;
           i := 1;
           Lwt_mutex.with_lock lock (fun () ->
-              send_append_entries_if_needed t >>= fun _ -> Lwt.return_unit
+              if t.should_step_down
+              then (
+                Logger.info t.logger
+                  "Avoiding sending append_entries since it's stepping down";
+                Lwt.return_unit
+              )
+              else send_append_entries_if_needed t >>= fun _ -> Lwt.return_unit
           )
         )
         else (
