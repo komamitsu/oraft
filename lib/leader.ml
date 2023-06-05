@@ -357,6 +357,7 @@ let append_entries_thread t ~server_stopper =
           State.log_leader t.state ~logger:t.logger;
           i := 1;
           Lwt_mutex.with_lock lock (fun () ->
+              (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
               if t.should_step_down
               then (
                 Logger.info t.logger
