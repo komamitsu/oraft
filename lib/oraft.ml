@@ -41,7 +41,7 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
     Params.client_command_request_to_yojson r
   in
   let request =
-    Request_sender.post ~node_id:conf.node_id ~logger ~url_path:"client_command"
+    Request_sender.post ~logger ~url_path:"client_command"
       ~request_json
         (* Afford to allow a connection timeout to unavailable server *)
       ~timeout_millis:(conf.request_timeout_millis * 2)

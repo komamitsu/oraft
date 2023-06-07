@@ -67,8 +67,7 @@ let request_vote t ~election_timer =
     Params.request_vote_request_to_yojson r
   in
   let request =
-    Request_sender.post ~node_id:t.conf.node_id ~logger:t.logger
-      ~url_path:"request_vote" ~request_json
+    Request_sender.post ~logger:t.logger ~url_path:"request_vote" ~request_json
       ~timeout_millis:t.conf.request_timeout_millis
       ~converter:(fun response_json ->
         match Params.request_vote_response_of_yojson response_json with

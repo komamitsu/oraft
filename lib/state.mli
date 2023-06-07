@@ -76,11 +76,9 @@ module VolatileStateOnLeader : sig
   val get : 'a list -> int -> 'a
   val set_next_index : t -> int -> int -> unit
   val set_match_index : t -> logger:Logger.t -> int -> int -> unit
-  val set_next_heartbeat : t -> int -> Core.Time_ns.t -> unit
   val show_nth_peer : t -> int -> string
   val next_index : t -> int -> int
   val match_index : t -> int -> int
-  val next_heartbeat : t -> int -> Core.Time_ns.t
 end
 
 type common = {
