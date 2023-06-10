@@ -33,7 +33,7 @@ type t = {
   apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
-  threads : Append_entries_sender.t list;
+  mutable append_entries_sender : Append_entries_sender.t option;
 }
 
 let init ~conf ~apply_log ~state =
@@ -52,12 +52,16 @@ let init ~conf ~apply_log ~state =
             ~last_log_index:(PersistentLog.last_index state.persistent_log);
       };
     should_step_down = false;
+    append_entries_sender = None;
   }
 
 
 let step_down t =
   Logger.info t.logger "Stepping down";
-  t.should_step_down <- true
+  t.should_step_down <- true;
+  match t.append_entries_sender with
+  | Some sender -> Append_entries_sender.stop sender
+  | None -> Logger.error t.logger "Append_entries_sender isn't initalized"
 
 
 let append_entries t =
@@ -71,36 +75,24 @@ let append_entries t =
     let persistent_log = t.state.common.persistent_log in
     let volatile_state = t.state.common.volatile_state in
     let last_log_index = PersistentLog.last_index persistent_log in
-    ( Lwt_list.mapi_p (request_append_entry t) (Conf.peer_nodes t.conf)
-    >>= fun results ->
-      Lwt_list.fold_left_s
-        (fun a result -> Lwt.return (if Option.is_some result then a + 1 else a))
-        1 (* Implicitly voting for myself *) results
-    )
-    >>= fun n ->
-    let majority = Conf.majority_of_nodes t.conf in
-    Logger.debug t.logger
-      (Printf.sprintf
-         "Received responses of append_entries. received:%d, majority:%d" n
-         majority
-      );
-    let result =
-      if (* If there exists an N such that N > commitIndex, a majority
-            * of matchIndex[i] ≥ N, and log[N].term == currentTerm:
-            * set commitIndex = N (§5.3, §5.4). *)
-         n >= Conf.majority_of_nodes t.conf
-      then (
-        VolatileState.update_commit_index volatile_state last_log_index;
-        VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-            let log = PersistentLog.get_exn persistent_log i in
-            t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
-              ~log_data:log.data
-        );
-        true
-      )
-      else false
+
+    let%lwt _ =
+      match t.append_entries_sender with
+      | Some sender ->
+          Append_entries_sender.wait_append_entries_response sender
+            ~log_index:last_log_index
+      | None ->
+          Logger.error t.logger "Append_entries_sender isn't initalized";
+          Lwt.return ()
     in
-    Lwt.return result
+    VolatileState.update_commit_index volatile_state last_log_index;
+    VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+        let log = PersistentLog.get_exn persistent_log i in
+        t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+          ~log_data:log.data
+    );
+    (* TODO Fix the return value *)
+    Lwt.return true
   )
 
 
@@ -209,5 +201,14 @@ let run t () =
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
-  let append_entries_thread = append_entries_thread t ~server_stopper in
-  Lwt.join [ append_entries_thread; server ] >>= fun () -> Lwt.return FOLLOWER
+  let append_entries_sender =
+    Append_entries_sender.create ~conf:t.conf ~state:t.state ~logger:t.logger
+      ~step_down:(fun () ->
+        step_down t;
+        Lwt.wakeup server_stopper ()
+    )
+  in
+  t.append_entries_sender <- Some append_entries_sender;
+  Lwt.join
+    [ server; Append_entries_sender.wait_termination append_entries_sender ]
+  >>= fun () -> Lwt.return FOLLOWER

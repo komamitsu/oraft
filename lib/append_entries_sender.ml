@@ -6,15 +6,11 @@ type t = {
   conf : Conf.t;
   state : leader;
   logger : Logger.t;
-  node_id : int;
   step_down : unit -> unit;
-  should_step_down : bool;
-  mutable last_request_ts : Core.Time_ns.t;
+  mutable should_step_down : bool;
   inflight_requests : (int * Lwt_mutex.t) Queue.t;
-  mutable thread : unit Lwt.t option;
+  mutable threads : unit Lwt.t list option;
 }
-
-type lock = Lwt_mutex.t
 
 let lock = Lwt_mutex.create ()
 
@@ -23,7 +19,7 @@ let send_request_and_update_peer_info t ~node_id ~request_json ~entries
   let persistent_state = t.state.common.persistent_state in
   let leader_state = t.state.volatile_state_on_leader in
   Logger.debug t.logger
-    (Printf.sprintf "Sending append_entries(node_id:%d): %s" t.node_id
+    (Printf.sprintf "Sending append_entries(node_id:%d): %s" node_id
        (Yojson.Safe.to_string request_json)
     );
   let node = Conf.peer_node t.conf ~node_id in
@@ -63,7 +59,7 @@ let send_request_and_update_peer_info t ~node_id ~request_json ~entries
             then
               VolatileStateOnLeader.set_next_index leader_state node_id
                 (next_index - 1);
-            Error (sprintf "Need to try with decremented index(%d)" t.node_id)
+            Error (sprintf "Need to try with decremented index(%d)" node_id)
           )
       | Error _ as err -> err
   )
@@ -89,7 +85,7 @@ let prepare_entries t ~node_id =
         | None ->
             let msg =
               Printf.sprintf "Can't find the log(%d): i:%d, prev_log_index:%d"
-                t.node_id i prev_log_index
+                node_id i prev_log_index
             in
             Logger.error t.logger msg;
             None
@@ -132,94 +128,79 @@ let request_append_entry t ~node_id =
     ~prev_log_index
 
 
-let heartbeat_interval t =
-  Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis ()
-
-
-let send_append_entries_if_needed t ~node_id =
-  let interval = heartbeat_interval t in
-  let now = Time_ns.now () in
-  let next_heartbeat = Time_ns.add t.last_request_ts interval in
-  if Time_ns.is_earlier next_heartbeat ~than:now
-  then (
-    t.last_request_ts <- now;
-    request_append_entry t ~node_id
-  )
-  else Lwt.return_none
-
-
-let conf_interval t =
-  Time_ns.Span.create ~ms:t.conf.heartbeat_interval_millis ()
-
-
-let divided_conf_interval_seconds t n =
-  float_of_int t.conf.heartbeat_interval_millis /. float_of_int n /. 1000.0
+let interval_in_seconds t =
+  float_of_int t.conf.heartbeat_interval_millis /. 1000.0
 
 
 let append_entries_thread t ~node_id =
+  let interval_in_seconds = interval_in_seconds t in
   State.log_leader t.state ~logger:t.logger;
-  let n = 20 in
-  let sleep_interval_seconds = divided_conf_interval_seconds t n in
-  let i = ref 0 in
   let rec loop () =
     if t.should_step_down
     then Lwt.return ()
     else (
       let proc =
-        if !i = 0 || !i >= n
-        then (
-          State.log_leader t.state ~logger:t.logger;
-          i := 1;
-          Lwt_mutex.with_lock lock (fun () ->
-              (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
-              if t.should_step_down
-              then (
-                Logger.info t.logger
-                  (sprintf
-                     "Avoiding sending append_entries since it's stepping down(%d)"
-                     t.node_id
-                  );
-                Lwt.return_unit
-              )
-              else
-                send_append_entries_if_needed t ~node_id >>= fun _ ->
-                Lwt.return_unit
-          )
-        )
-        else (
-          i := !i + 1;
-          Lwt.return_unit
+        State.log_leader t.state ~logger:t.logger;
+        Lwt_mutex.with_lock lock (fun () ->
+            (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
+            if t.should_step_down
+            then (
+              Logger.info t.logger
+                (sprintf
+                   "Avoiding sending append_entries since it's stepping down(%d)"
+                   node_id
+                );
+              Lwt.return_unit
+            )
+            else
+              request_append_entry t ~node_id >>= fun _ -> Lwt.return_unit
+              (* TODO: Get last_log_index of the majority and unlock the inflight requests *)
         )
       in
       proc >>= fun () ->
-      Lwt_unix.sleep sleep_interval_seconds >>= fun () -> loop ()
+      Lwt_unix.sleep interval_in_seconds >>= fun () -> loop ()
     )
   in
   loop ()
 
 
-(* FIXME *)
-let stop _ = ()
-
-(* FIXME *)
-let wait_append_entries_response _ ~log_index =
-  if log_index > 0 then lock else lock
+let stop t =
+  Logger.info t.logger "Stopping Append_entries_sender";
+  t.should_step_down <- true
 
 
-let create ~conf ~state ~logger ~node_id ~step_down =
+let wait_append_entries_response t ~log_index =
+  let lock = Lwt_mutex.create () in
+  let%lwt _ = Lwt_mutex.lock lock in
+  Queue.enqueue t.inflight_requests (log_index, lock);
+  let%lwt _ = Lwt_mutex.lock lock in
+  Lwt.return ()
+
+
+let wait_termination t =
+  match t.threads with
+  | Some threads -> Lwt.join threads
+  | None ->
+      Logger.warn t.logger "Any threads aren't initialized";
+      Lwt.return ()
+
+
+let create ~conf ~state ~logger ~step_down =
   let t =
     {
       conf;
       state;
       logger;
-      node_id;
       step_down;
       should_step_down = false;
-      last_request_ts = Time_ns.min_value_representable;
       inflight_requests = Queue.create ();
-      thread = None;
+      threads = None;
     }
   in
-  let thread = append_entries_thread t ~node_id in
-  t.thread <- Some thread;
+  t.threads <-
+    Some
+      (List.map (Conf.peer_nodes conf) ~f:(fun node ->
+           append_entries_thread t ~node_id:node.id
+       )
+      );
   t
