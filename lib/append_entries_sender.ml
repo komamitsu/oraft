@@ -14,6 +14,37 @@ type t = {
 
 let lock = Lwt_mutex.create ()
 
+let return_responses t =
+  let match_indexes =
+    List.map
+      ~f:(fun node ->
+        VolatileStateOnLeader.match_index t.state.volatile_state_on_leader
+          node.id
+      )
+      (Conf.peer_nodes t.conf)
+  in
+  let ordered_match_indexes =
+    List.sort ~compare:(fun a b -> a - b) match_indexes
+  in
+  let num_of_majority = Conf.majority_of_nodes t.conf in
+  let match_index_with_majority =
+    List.nth_exn ordered_match_indexes (num_of_majority - 1)
+  in
+  (* TODO: Optimization *)
+  Queue.filter_inplace
+    ~f:(fun (log_index, lock) ->
+      if match_index_with_majority < log_index
+      then (* keep *)
+        true
+      else (
+        Lwt_mutex.unlock lock;
+        (* release *)
+        false
+      )
+    )
+    t.inflight_requests
+
+
 let send_request_and_update_peer_info t ~node_id ~request_json ~entries
     ~prev_log_index =
   let persistent_state = t.state.common.persistent_state in
@@ -41,6 +72,10 @@ let send_request_and_update_peer_info t ~node_id ~request_json ~entries
             let match_index =
               VolatileStateOnLeader.match_index leader_state node_id
             in
+
+            (* Check inflight requests and return responses *)
+            return_responses t;
+
             VolatileStateOnLeader.set_next_index leader_state node_id
               (match_index + 1);
             (* All Servers:
