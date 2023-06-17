@@ -42,6 +42,7 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   in
   let request =
     Request_sender.post ~logger ~url_path:"client_command"
+      ~my_node_id:conf.node_id
       ~request_json
         (* Afford to allow a connection timeout to unavailable server *)
       ~timeout_millis:(conf.request_timeout_millis * 2)

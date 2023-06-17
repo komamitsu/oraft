@@ -59,8 +59,9 @@ let send_request_and_update_peer_info t ~node_index ~node ~request_json ~entries
        (Yojson.Safe.to_string request_json)
     );
   let node = Conf.peer_node t.conf ~node_id:node.id in
-  Request_sender.post node ~logger:t.logger ~url_path:"append_entries"
-    ~request_json ~timeout_millis:t.conf.request_timeout_millis
+  Request_sender.post node ~my_node_id:t.conf.node_id ~logger:t.logger
+    ~url_path:"append_entries" ~request_json
+    ~timeout_millis:t.conf.request_timeout_millis
     ~converter:(fun response_json ->
       match Params.append_entries_response_of_yojson response_json with
       | Ok param ->
