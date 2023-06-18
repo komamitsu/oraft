@@ -33,6 +33,7 @@ type t = {
   apply_log : apply_log;
   state : State.leader;
   mutable should_step_down : bool;
+  mutable server_stopper : unit Lwt.u option;
   mutable append_entries_sender : Append_entries_sender.t option;
 }
 
@@ -52,6 +53,7 @@ let init ~conf ~apply_log ~state =
             ~last_log_index:(PersistentLog.last_index state.persistent_log);
       };
     should_step_down = false;
+    server_stopper = None;
     append_entries_sender = None;
   }
 
@@ -59,9 +61,17 @@ let init ~conf ~apply_log ~state =
 let step_down t =
   Logger.info t.logger "Stepping down";
   t.should_step_down <- true;
-  match t.append_entries_sender with
-  | Some sender -> Append_entries_sender.stop sender
+  ( match t.append_entries_sender with
+  | Some sender ->
+      Logger.info t.logger "Calling Append_entries_sender.stop";
+      Append_entries_sender.stop sender
   | None -> Logger.error t.logger "Append_entries_sender isn't initalized"
+  );
+  match t.server_stopper with
+  | Some server_stopper ->
+      Logger.info t.logger "Calling Lwt.wakeup server_stopper";
+      Lwt.wakeup server_stopper ()
+  | None -> Logger.error t.logger "Server stopper isn't initalized"
 
 
 let append_entries t =
@@ -198,14 +208,13 @@ let run t () =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
       ~lock ~table:handlers
   in
+  t.server_stopper <- Some server_stopper;
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
   let append_entries_sender =
     Append_entries_sender.create ~conf:t.conf ~state:t.state ~logger:t.logger
-      ~step_down:(fun () ->
-        step_down t;
-        Lwt.wakeup server_stopper ()
+      ~step_down:(fun () -> step_down t
     )
   in
   t.append_entries_sender <- Some append_entries_sender;

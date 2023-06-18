@@ -27,14 +27,9 @@ let return_responses t =
     List.sort ~compare:(fun a b -> a - b) match_indexes
   in
   let num_of_majority = Conf.majority_of_nodes t.conf in
-  (* FIXME *)
-  Logger.info t.logger (sprintf "DEBUG: num_of_majority=%d" num_of_majority);
   let match_index_with_majority =
     List.nth_exn ordered_match_indexes (num_of_majority - 1)
   in
-  (* FIXME *)
-  Logger.info t.logger
-    (sprintf "DEBUG: match_index_with_majority=%d" match_index_with_majority);
   (* TODO: Optimization *)
   Queue.filter_inplace
     ~f:(fun (log_index, lock) ->
