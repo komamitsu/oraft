@@ -1,6 +1,5 @@
 open Base
 open Core
-open Lwt
 open State
 
 type t = {
@@ -178,7 +177,7 @@ let append_entries_thread t ~node_index ~node =
     if t.should_step_down
     then Lwt.return ()
     else (
-      let proc =
+      let%lwt _ =
         State.log_leader t.state ~logger:t.logger;
         Lwt_mutex.with_lock lock (fun () ->
             (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
@@ -191,14 +190,26 @@ let append_entries_thread t ~node_index ~node =
                 );
               Lwt.return_unit
             )
-            else
-              request_append_entry t ~node_index ~node >>= fun _ ->
+            else (
+              let%lwt _ = request_append_entry t ~node_index ~node in
               Lwt.return_unit
-              (* TODO: Get last_log_index of the majority and unlock the inflight requests *)
+            )
         )
       in
-      proc >>= fun () ->
-      Lwt_unix.sleep interval_in_seconds >>= fun () -> loop ()
+
+      (* Sleep if the match_index of the node has cautght up with the last log index *)
+      let persistent_log = t.state.common.persistent_log in
+      let last_log_index = PersistentLog.last_index persistent_log in
+      let leader_state = t.state.volatile_state_on_leader in
+      let match_index =
+        VolatileStateOnLeader.match_index leader_state node_index
+      in
+      let%lwt _ =
+        if last_log_index = match_index
+        then Lwt_unix.sleep interval_in_seconds
+        else Lwt.return_unit
+      in
+      loop ()
     )
   in
   loop ()
