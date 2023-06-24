@@ -25,7 +25,6 @@ open State
  *   set commitIndex = N (§5.3, §5.4).
  *)
 let mode = LEADER
-let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
@@ -204,6 +203,7 @@ let run t () =
   @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
+  let lock = Lwt_mutex.create () in
   let server, server_stopper =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
       ~lock ~table:handlers
