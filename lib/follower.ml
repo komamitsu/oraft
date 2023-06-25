@@ -12,13 +12,13 @@ open State
   *)
 
 let mode = FOLLOWER
-let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
+  lock : Lwt_mutex.t;
 }
 
 let init ~conf ~apply_log ~state =
@@ -29,6 +29,7 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level ();
     apply_log;
     state;
+    lock = Lwt_mutex.create ();
   }
 
 
@@ -48,18 +49,19 @@ let request_handlers t ~election_timer =
       ),
       function
       | APPEND_ENTRIES_REQUEST x ->
-          Append_entries_handler.handle ~conf:t.conf ~state:t.state
-            ~logger:t.logger
-            ~apply_log:t.apply_log
-              (* If election timeout elapses without receiving AppendEntries
-               * RPC from current leader or granting vote to candidate:
-               * convert to candidate *)
-            ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> ())
-            ~handle_same_term_as_newer:false ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Append_entries_handler.handle ~conf:t.conf ~state:t.state
+                ~logger:t.logger
+                ~apply_log:t.apply_log
+                  (* If election timeout elapses without receiving AppendEntries
+                   * RPC from current leader or granting vote to candidate:
+                   * convert to candidate *)
+                ~cb_valid_request:(fun () -> Timer.update election_timer)
+                ~cb_newer_term:(fun () -> ())
+                ~handle_same_term_as_newer:false ~param:x
+          )
       | _ -> unexpected_request t
     );
-
   Stdlib.Hashtbl.add handlers (`POST, "/request_vote")
     ( (fun json ->
         match request_vote_request_of_yojson json with
@@ -68,17 +70,18 @@ let request_handlers t ~election_timer =
       ),
       function
       | REQUEST_VOTE_REQUEST x ->
-          Request_vote_handler.handle ~state:t.state
-            ~logger:t.logger
-              (* If election timeout elapses without receiving AppendEntries
-               * RPC from current leader or granting vote to candidate:
-               * convert to candidate *)
-            ~cb_valid_request:(fun () -> Timer.update election_timer)
-            ~cb_newer_term:(fun () -> ())
-            ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Request_vote_handler.handle ~state:t.state
+                ~logger:t.logger
+                  (* If election timeout elapses without receiving AppendEntries
+                   * RPC from current leader or granting vote to candidate:
+                   * convert to candidate *)
+                ~cb_valid_request:(fun () -> Timer.update election_timer)
+                ~cb_newer_term:(fun () -> ())
+                ~param:x
+          )
       | _ -> unexpected_request t
     );
-
   handlers
 
 
@@ -96,7 +99,7 @@ let run t () =
   let handlers = request_handlers t ~election_timer in
   let server, server_stopper =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~lock ~table:handlers
+      ~table:handlers
   in
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())

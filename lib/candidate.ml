@@ -15,13 +15,13 @@ open State
  * - If election timeout elapses: start new election
  *)
 let mode = CANDIDATE
-let lock = Lwt_mutex.create ()
 
 type t = {
   conf : Conf.t;
   logger : Logger.t;
   apply_log : apply_log;
   state : State.common;
+  lock : Lwt_mutex.t;
   mutable next_mode : mode option;
 }
 
@@ -33,6 +33,7 @@ let init ~conf ~apply_log ~state =
         ~level:conf.log_level ();
     apply_log;
     state;
+    lock = Lwt_mutex.create ();
     next_mode = None;
   }
 
@@ -98,16 +99,18 @@ let request_handlers t ~election_timer =
       ),
       function
       | APPEND_ENTRIES_REQUEST x when is_none t.next_mode ->
-          Append_entries_handler.handle ~conf:t.conf ~state:t.state
-            ~logger:t.logger ~apply_log:t.apply_log
-            ~cb_valid_request:(fun () -> Timer.update election_timer
-            )
-              (* All Servers:
-               * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower (§5.1) *)
-              (* If AppendEntries RPC received from new leader: convert to follower *)
-            ~cb_newer_term:(fun () -> stepdown t ~election_timer)
-            ~handle_same_term_as_newer:true ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Append_entries_handler.handle ~conf:t.conf ~state:t.state
+                ~logger:t.logger ~apply_log:t.apply_log
+                ~cb_valid_request:(fun () -> Timer.update election_timer
+                )
+                  (* All Servers:
+                   * - If RPC request or response contains term T > currentTerm:
+                   *   set currentTerm = T, convert to follower (§5.1) *)
+                  (* If AppendEntries RPC received from new leader: convert to follower *)
+                ~cb_newer_term:(fun () -> stepdown t ~election_timer)
+                ~handle_same_term_as_newer:true ~param:x
+          )
       | _ -> unexpected_request t
     );
   Stdlib.Hashtbl.add handlers (`POST, "/request_vote")
@@ -118,15 +121,17 @@ let request_handlers t ~election_timer =
       ),
       function
       | REQUEST_VOTE_REQUEST x when is_none t.next_mode ->
-          Request_vote_handler.handle ~state:t.state ~logger:t.logger
-            ~cb_valid_request:(fun () -> ()
-            )
-              (* All Servers:
-               * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower (§5.1)
-               *)
-            ~cb_newer_term:(fun () -> stepdown t ~election_timer)
-            ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Request_vote_handler.handle ~state:t.state ~logger:t.logger
+                ~cb_valid_request:(fun () -> ()
+                )
+                  (* All Servers:
+                   * - If RPC request or response contains term T > currentTerm:
+                   *   set currentTerm = T, convert to follower (§5.1)
+                   *)
+                ~cb_newer_term:(fun () -> stepdown t ~election_timer)
+                ~param:x
+          )
       | _ -> unexpected_request t
     );
   handlers
@@ -199,11 +204,11 @@ let run t () =
   let handlers = request_handlers t ~election_timer in
   let server, stopper =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~lock ~table:handlers
+      ~table:handlers
   in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request =
-    Lwt_mutex.with_lock lock (fun () -> request_vote t ~election_timer)
+    Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer)
   in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =

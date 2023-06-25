@@ -31,6 +31,7 @@ type t = {
   logger : Logger.t;
   apply_log : apply_log;
   state : State.leader;
+  lock : Lwt_mutex.t;
   mutable should_step_down : bool;
   mutable server_stopper : unit Lwt.u option;
   mutable append_entries_sender : Append_entries_sender.t option;
@@ -51,6 +52,7 @@ let init ~conf ~apply_log ~state =
             ~n:(List.length (Conf.peer_nodes conf))
             ~last_log_index:(PersistentLog.last_index state.persistent_log);
       };
+    lock = Lwt_mutex.create ();
     should_step_down = false;
     server_stopper = None;
     append_entries_sender = None;
@@ -150,15 +152,17 @@ let request_handlers t =
       ),
       function
       | APPEND_ENTRIES_REQUEST x when not t.should_step_down ->
-          Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
-            ~logger:t.logger ~apply_log:t.apply_log
-            ~cb_valid_request:(fun () -> ()
-            )
-              (* All Servers:
-               * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_newer_term:(fun () -> step_down t)
-            ~handle_same_term_as_newer:false ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
+                ~logger:t.logger ~apply_log:t.apply_log
+                ~cb_valid_request:(fun () -> ()
+                )
+                  (* All Servers:
+                   * - If RPC request or response contains term T > currentTerm:
+                   *   set currentTerm = T, convert to follower (§5.1) *)
+                ~cb_newer_term:(fun () -> step_down t)
+                ~handle_same_term_as_newer:false ~param:x
+          )
       | _ -> unexpected_request ()
     );
   Stdlib.Hashtbl.add handlers (`POST, "/request_vote")
@@ -169,14 +173,16 @@ let request_handlers t =
       ),
       function
       | REQUEST_VOTE_REQUEST x when not t.should_step_down ->
-          Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
-            ~cb_valid_request:(fun () -> ()
-            )
-              (* All Servers:
-               * - If RPC request or response contains term T > currentTerm:
-               *   set currentTerm = T, convert to follower (§5.1) *)
-            ~cb_newer_term:(fun () -> step_down t)
-            ~param:x
+          Lwt_mutex.with_lock t.lock (fun () ->
+              Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
+                ~cb_valid_request:(fun () -> ()
+                )
+                  (* All Servers:
+                   * - If RPC request or response contains term T > currentTerm:
+                   *   set currentTerm = T, convert to follower (§5.1) *)
+                ~cb_newer_term:(fun () -> step_down t)
+                ~param:x
+          )
       | _ -> unexpected_request ()
     );
   Stdlib.Hashtbl.add handlers (`POST, "/client_command")
@@ -187,7 +193,7 @@ let request_handlers t =
       ),
       function
       | CLIENT_COMMAND_REQUEST x when not t.should_step_down ->
-          handle_client_command t ~param:x
+          Lwt_mutex.with_lock t.lock (fun () -> handle_client_command t ~param:x)
       | _ -> unexpected_request ()
     );
   handlers
@@ -203,16 +209,20 @@ let run t () =
   @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;
   let handlers = request_handlers t in
-  let lock = Lwt_mutex.create () in
   let server, server_stopper =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
-      ~lock ~table:handlers
+      ~table:handlers
   in
   t.server_stopper <- Some server_stopper;
   (* Upon election: send initial empty AppendEntries RPCs
    * (heartbeat) to each server; repeat during idle periods to
    * prevent election timeouts (§5.2) *)
   let append_entries_sender =
+    (*
+      module Leader doesn't use `next_index` or `match_index` of the replicas
+      while module Append_entries_sender uses only them. So `lock` doesn't
+      need to be shared with Append_entries_sender.
+    *)
     Append_entries_sender.create ~conf:t.conf ~state:t.state ~logger:t.logger
       ~step_down:(fun () -> step_down t
     )
