@@ -12,8 +12,6 @@ type t = {
   mutable threads : unit Lwt.t list option;
 }
 
-let lock = Lwt_mutex.create ()
-
 let return_responses t =
   let match_indexes =
     List.mapi
@@ -31,12 +29,12 @@ let return_responses t =
   in
   (* TODO: Optimization *)
   Queue.filter_inplace
-    ~f:(fun (log_index, lock) ->
+    ~f:(fun (log_index, lock_per_req) ->
       if match_index_with_majority < log_index
       then (* keep *)
         true
       else (
-        Lwt_mutex.unlock lock;
+        Lwt_mutex.unlock lock_per_req;
         (* release *)
         false
       )
@@ -179,21 +177,19 @@ let append_entries_thread t ~node_index ~node =
     else (
       let%lwt _ =
         State.log_leader t.state ~logger:t.logger;
-        Lwt_mutex.with_lock lock (fun () ->
-            (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
-            if t.should_step_down
-            then (
-              Logger.info t.logger
-                (sprintf
-                   "Avoiding sending append_entries since it's stepping down(node_id:%d)"
-                   node.id
-                );
-              Lwt.return_unit
-            )
-            else (
-              let%lwt _ = request_append_entry t ~node_index ~node in
-              Lwt.return_unit
-            )
+        (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
+        if t.should_step_down
+        then (
+          Logger.info t.logger
+            (sprintf
+               "Avoiding sending append_entries since it's stepping down(node_id:%d)"
+               node.id
+            );
+          Lwt.return_unit
+        )
+        else (
+          let%lwt _ = request_append_entry t ~node_index ~node in
+          Lwt.return_unit
         )
       in
 
@@ -221,10 +217,10 @@ let stop t =
 
 
 let wait_append_entries_response t ~log_index =
-  let lock = Lwt_mutex.create () in
-  let%lwt _ = Lwt_mutex.lock lock in
-  Queue.enqueue t.inflight_requests (log_index, lock);
-  let%lwt _ = Lwt_mutex.lock lock in
+  let lock_per_req = Lwt_mutex.create () in
+  let%lwt _ = Lwt_mutex.lock lock_per_req in
+  Queue.enqueue t.inflight_requests (log_index, lock_per_req);
+  let%lwt _ = Lwt_mutex.lock lock_per_req in
   Lwt.return ()
 
 
