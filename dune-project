@@ -20,7 +20,7 @@
  (synopsis "Raft consensus algorithm implemented in OCaml")
  (description "Raft consensus algorithm implemented in OCaml")
  (depends
-  (ocaml (>= 4.11.0))
+  (ocaml (>= 4.14.0))
   dune
   (core (>= v0.9.0))
   (core_unix (>= v0.9.0))

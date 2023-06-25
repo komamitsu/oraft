@@ -9,9 +9,6 @@ jobs:
       fail-fast: false
       matrix:
         ocaml-compiler:
-          - ocaml-base-compiler.4.11.2
-          - ocaml-base-compiler.4.12.1
-          - ocaml-base-compiler.4.13.1
           - ocaml-base-compiler.4.14.1
           - ocaml-base-compiler.5.0.0
     steps:
