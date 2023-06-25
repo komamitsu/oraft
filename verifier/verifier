@@ -282,7 +282,7 @@ class KeySetVerifier < Verifier
       $logger.info "All good"
       separator_line
       return true
-    elsif failed <= (expected / 2)
+    elsif failed <= (expected.size / 2)
       $logger.info "Detected a few failures: failed_count=#{failed}. But it's possible that one or two nodes hasn't applied latest entries. Let me check again..."
       sleep 5
       failed = checker.call

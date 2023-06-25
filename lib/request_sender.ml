@@ -28,13 +28,14 @@ let handle_response ~logger ~converter ~node ~resp ~body =
   )
 
 
-let post ~node_id ~logger ~url_path ~request_json ~timeout_millis
-    ~(converter : Yojson.Safe.t -> (Params.response, string) Result.t) node =
+let post ~logger ~url_path ~request_json ~timeout_millis
+    ~(converter : Yojson.Safe.t -> (Params.response, string) Result.t)
+    ~my_node_id node =
   let request_param =
     request_json |> Yojson.Safe.to_string |> Cohttp_lwt.Body.of_string
   in
   let headers =
-    Cohttp.Header.init_with "X-Raft-Node-Id" (string_of_int node_id)
+    Cohttp.Header.init_with "X-Raft-Node-Id" (string_of_int my_node_id)
   in
   let timeout : Params.response option Lwt.t =
     Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) >>= fun () ->

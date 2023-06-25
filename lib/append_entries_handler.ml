@@ -69,13 +69,21 @@ let append_entries ~(conf : Conf.t) ~logger ~state
 let log_error_req ~state ~logger ~msg ~(param : Params.append_entries_request) =
   let entries_size = List.length param.entries in
   let persistent_log = state.persistent_log in
+  let first_entry =
+    if entries_size = 0
+    then "None"
+    else PersistentLogEntry.show (List.nth_exn param.entries 0)
+  in
+  let last_entry =
+    if entries_size = 0
+    then "None"
+    else PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1))
+  in
   Logger.warn logger
     (Printf.sprintf
        "%s. param:{term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d, first_entry:%s, last_entry:%s}, state:%s"
        msg param.term param.leader_id param.prev_log_term param.prev_log_index
-       entries_size param.leader_commit
-       (PersistentLogEntry.show (List.nth_exn param.entries 0))
-       (PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1)))
+       entries_size param.leader_commit first_entry last_entry
        (PersistentLog.show persistent_log)
     )
 

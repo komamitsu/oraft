@@ -47,7 +47,7 @@ let write t ~level ~msg =
   then (
     let now =
       Core.Time_ns.to_string_iso8601_basic (Core.Time_ns.now ())
-        ~zone:Core.Time.Zone.utc
+        ~zone:Core.Time_float.Zone.utc
     in
     let msg = Str.(global_replace (regexp "\n") "" msg) in
     let s =
