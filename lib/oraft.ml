@@ -26,9 +26,9 @@ let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
     let next_state_exec =
       VolatileState.update_mode state.volatile_state ~logger next;
       match next with
-      | FOLLOWER -> Follower.run (Follower.init ~conf ~apply_log ~state)
-      | CANDIDATE -> Candidate.run (Candidate.init ~conf ~apply_log ~state)
-      | LEADER -> Leader.run (Leader.init ~conf ~apply_log ~state)
+      | FOLLOWER -> Follower.run ~conf ~apply_log ~state
+      | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
+      | LEADER -> Leader.run ~conf ~apply_log ~state
     in
     loop next_state_exec
   in
@@ -78,9 +78,7 @@ let start ~conf_file ~apply_log =
   let state = state ~conf ~logger in
   Logger.info logger "Starting Oraft";
   let post_command = post_command ~conf ~logger ~state in
-  let initial_state_exec =
-    Follower.run (Follower.init ~conf ~apply_log ~state)
-  in
+  let initial_state_exec = Follower.run ~conf ~apply_log ~state in
   {
     conf;
     process =
