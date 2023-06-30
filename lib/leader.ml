@@ -199,7 +199,8 @@ let request_handlers t =
   handlers
 
 
-let run t () =
+let run ~conf ~apply_log ~state () =
+  let t = init ~conf ~apply_log ~state in
   VolatileState.update_leader_id t.state.common.volatile_state ~logger:t.logger
     t.conf.node_id;
   PersistentState.set_voted_for t.state.common.persistent_state ~logger:t.logger

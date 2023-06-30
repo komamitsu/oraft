@@ -185,7 +185,8 @@ let next_mode t =
       CANDIDATE
 
 
-let run t () =
+let run ~conf ~apply_log ~state () =
+  let t = init ~conf ~apply_log ~state in
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   let persistent_state = t.state.persistent_state in
   (* Increment currentTerm *)
