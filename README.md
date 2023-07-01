@@ -83,8 +83,6 @@ $ chaos_test/run.sh
 The following code is a very simple application that uses ORaft.
 
 ```ocaml
-open Lwt
-
 let main =
   let oraft =
     Oraft.start ~conf_file:"/path/to/oraft-config.json" ~apply_log:(fun i s ->
@@ -93,10 +91,11 @@ let main =
       flush stdout
     )
   in
-  let rec loop () = Lwt_io.read_line Lwt_io.stdin
-    >>= fun s -> oraft.post_command s
-    >>= fun result -> Lwt_io.printl (if result then "OK" else "ERR")
-    >>= fun () -> loop ()
+  let rec loop () =
+    let%lwt s = Lwt_io.read_line Lwt_io.stdin in
+    let%lwt result = oraft.post_command s in
+    let%lwt _ = Lwt_io.printl (if result then "OK" else "ERR") in
+    loop ()
   in
   Lwt.join [ loop (); oraft.process ] |> Lwt_main.run
 ```
