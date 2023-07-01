@@ -1,0 +1,15 @@
+{
+    "node_id": 3,
+    "nodes": [
+        {"id": 1, "host": "localhost", "port": 7891, "app_port": 8181},
+        {"id": 2, "host": "localhost", "port": 7892, "app_port": 8182},
+        {"id": 3, "host": "localhost", "port": 7893, "app_port": 8183}
+    ],
+    "log_file": "oraft.log",
+    "log_level": "DEBUG",
+    "state_dir": "state",
+    "election_timeout_millis": 200,
+    "heartbeat_interval_millis": 50,
+    "request_timeout_millis": 100
+}
+

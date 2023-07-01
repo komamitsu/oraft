@@ -1,4 +1,6 @@
 example-kv/oraft-*/oraft.log
 example-kv/oraft-*/state/*
+example-simple/oraft-*/oraft.log
+example-simple/oraft-*/state/*
 chaos_test/docker/oraft-*/oraft.log
 chaos_test/docker/oraft-*/state/*
