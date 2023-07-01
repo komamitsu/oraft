@@ -218,5 +218,5 @@ let run ~conf ~apply_log ~state () =
         Lwt.cancel vote_request
     )
   in
-  let _ = Lwt.join [ election_timer_thread; received_votes; server ] in
+  let%lwt _ = Lwt.join [ election_timer_thread; received_votes; server ] in
   Lwt.return (next_mode t)
