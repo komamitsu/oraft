@@ -1,4 +1,3 @@
-open Lwt
 open Cohttp_lwt_unix
 
 let kvs = Hashtbl.create 64
@@ -82,13 +81,17 @@ let oraft conf_file =
 
 
 let redirect_to_leader leader_host port body =
-  Client.post
-    ~body:(Cohttp_lwt.Body.of_string body)
-    (Uri.of_string (Printf.sprintf "http://%s:%d/command" leader_host port))
-  >>= fun (resp, body) ->
-  body |> Cohttp_lwt.Body.to_string >|= fun body ->
-  let status_code = resp |> Response.status in
-  (status_code, body)
+  let%lwt resp, response_body =
+    Client.post
+      ~body:(Cohttp_lwt.Body.of_string body)
+      (Uri.of_string (Printf.sprintf "http://%s:%d/command" leader_host port))
+  in
+  Lwt.map
+    (fun body ->
+      let status_code = resp |> Response.status in
+      (status_code, body)
+    )
+    (Cohttp_lwt.Body.to_string response_body)
 
 
 let handle_or_proxy (oraft : Oraft.t) body f =
@@ -105,15 +108,16 @@ let server port (oraft : Oraft.t) =
     let path = req |> Request.uri |> Uri.path in
     match (meth, path) with
     | `POST, "/command" ->
-        ( body |> Cohttp_lwt.Body.to_string >>= fun request_body ->
+        let%lwt status_code, response_body =
+          let%lwt request_body = Cohttp_lwt.Body.to_string body in
           let _, cmd, args = parse_command request_body in
           match cmd with
           | "SET" ->
-              oraft.post_command request_body >>= fun result ->
+              let%lwt result = oraft.post_command request_body in
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
           | "INCR" ->
-              oraft.post_command request_body >>= fun result ->
+              let%lwt result = oraft.post_command request_body in
               Lwt.return
                 (if result then (`OK, "") else (`Internal_server_error, ""))
           | "GET" ->
@@ -133,8 +137,7 @@ let server port (oraft : Oraft.t) =
                   Lwt.return (`OK, csv)
               )
           | _ -> Lwt.return (`Bad_request, "")
-        )
-        >>= fun (status_code, response_body) ->
+        in
         Server.respond_string ~status:status_code ~body:response_body ()
     | _ -> Server.respond_string ~status:`Not_found ~body:"" ()
   in

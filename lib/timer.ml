@@ -1,5 +1,4 @@
 open Core
-open Lwt
 
 type t = {
   timeout_millis : int;
@@ -23,7 +22,10 @@ let start t ~on_stop =
       Logger.debug t.logger "Election_timer timed out";
       Lwt.return (on_stop ())
     )
-    else Lwt_unix.sleep 0.05 >>= fun () -> check_election_timeout ()
+    else (
+      let%lwt _ = Lwt_unix.sleep 0.05 in
+      check_election_timeout ()
+    )
   in
   check_election_timeout ()
 

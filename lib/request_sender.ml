@@ -1,6 +1,5 @@
 open Core
 open Cohttp_lwt_unix
-open Lwt
 open Base
 
 let handle_response ~logger ~converter ~node ~resp ~body =
@@ -38,7 +37,7 @@ let post ~logger ~url_path ~request_json ~timeout_millis
     Cohttp.Header.init_with "X-Raft-Node-Id" (string_of_int my_node_id)
   in
   let timeout : Params.response option Lwt.t =
-    Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) >>= fun () ->
+    let%lwt _ = Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) in
     Logger.warn logger
       (Printf.sprintf "Request timeout. node_id: %d, url_path: %s" node.id
          url_path
@@ -46,20 +45,25 @@ let post ~logger ~url_path ~request_json ~timeout_millis
     Lwt.return None
   in
   let send_req node =
-    Client.post ~body:request_param ~headers
-      (Uri.of_string
-         (Printf.sprintf "http://%s:%d/%s" node.host node.port url_path)
+    let%lwt resp, response_body =
+      Client.post ~body:request_param ~headers
+        (Uri.of_string
+           (Printf.sprintf "http://%s:%d/%s" node.host node.port url_path)
+        )
+    in
+    Lwt.map
+      (fun body ->
+        try handle_response ~logger ~converter ~node ~resp ~body
+        with e ->
+          let msg = Stdlib.Printexc.to_string e in
+          Logger.error logger
+            (Printf.sprintf
+               "Failed to handle response body. node_id: %d, error: %s" node.id
+               msg
+            );
+          None
       )
-    >>= fun (resp, body) ->
-    body |> Cohttp_lwt.Body.to_string >|= fun body ->
-    try handle_response ~logger ~converter ~node ~resp ~body
-    with e ->
-      let msg = Stdlib.Printexc.to_string e in
-      Logger.error logger
-        (Printf.sprintf "Failed to handle response body. node_id: %d, error: %s"
-           node.id msg
-        );
-      None
+      (Cohttp_lwt.Body.to_string response_body)
   in
   Lwt.catch
     (fun () -> Lwt.pick [ send_req node; timeout ])

@@ -1,5 +1,4 @@
 open Core
-open Lwt
 open Base
 open State
 
@@ -119,7 +118,7 @@ let handle_client_command t ~(param : Params.client_command_request) =
   let term = PersistentState.current_term t.state.common.persistent_state in
   PersistentLog.append persistent_log
     ~entries:[ { term; index = next_index; data = param.data } ];
-  append_entries t >>= fun result ->
+  let%lwt result = append_entries t in
   let status, response_body =
     if result
     then (
@@ -229,6 +228,8 @@ let run ~conf ~apply_log ~state () =
     )
   in
   t.append_entries_sender <- Some append_entries_sender;
-  Lwt.join
-    [ server; Append_entries_sender.wait_termination append_entries_sender ]
-  >>= fun () -> Lwt.return FOLLOWER
+  let%lwt _ =
+    Lwt.join
+      [ server; Append_entries_sender.wait_termination append_entries_sender ]
+  in
+  Lwt.return FOLLOWER

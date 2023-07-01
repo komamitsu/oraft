@@ -1,5 +1,4 @@
 open Core
-open Lwt
 open Base
 open State
 
@@ -138,24 +137,25 @@ let request_handlers t ~election_timer =
 
 
 let collect_votes t ~election_timer ~vote_request =
-  ( vote_request >>= fun responses ->
-    List.fold_left ~init:1 (* Implicitly voting for myself *)
-      ~f:(fun a r ->
-        match r with
-        | Some param -> (
-            match param with
-            | Params.REQUEST_VOTE_RESPONSE param ->
-                if param.vote_granted then a + 1 else a
-            | _ ->
-                Logger.error t.logger "Unexpected request";
-                a
-          )
-        | None -> a
+  let%lwt responses = vote_request in
+  let%lwt n =
+    Lwt.return
+      (List.fold_left ~init:1 (* Implicitly voting for myself *)
+         ~f:(fun a r ->
+           match r with
+           | Some param -> (
+               match param with
+               | Params.REQUEST_VOTE_RESPONSE param ->
+                   if param.vote_granted then a + 1 else a
+               | _ ->
+                   Logger.error t.logger "Unexpected request";
+                   a
+             )
+           | None -> a
+         )
+         responses
       )
-      responses
-    |> Lwt.return
-  )
-  >>= fun n ->
+  in
   let majority = Conf.majority_of_nodes t.conf in
   if n >= majority
   then (
@@ -218,5 +218,5 @@ let run ~conf ~apply_log ~state () =
         Lwt.cancel vote_request
     )
   in
-  Lwt.join [ election_timer_thread; received_votes; server ] >>= fun () ->
+  let%lwt _ = Lwt.join [ election_timer_thread; received_votes; server ] in
   Lwt.return (next_mode t)

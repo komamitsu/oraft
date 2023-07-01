@@ -1,5 +1,4 @@
 open Core
-open Lwt
 open Base
 open State
 
@@ -106,4 +105,5 @@ let run ~conf ~apply_log ~state () =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger "Starting";
-  Lwt.join [ election_timer_thread; server ] >>= fun () -> Lwt.return CANDIDATE
+  let%lwt _ = Lwt.join [ election_timer_thread; server ] in
+  Lwt.return CANDIDATE
