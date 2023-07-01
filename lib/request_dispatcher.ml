@@ -1,6 +1,5 @@
 open Core
 open Cohttp_lwt_unix
-open Lwt
 
 type key = Cohttp.Code.meth * string
 type converter = Yojson.Safe.t -> (Params.request, string) Result.t
@@ -26,7 +25,7 @@ let create ~port ~logger ~(table : (key, converter * processor) Stdlib.Hashtbl.t
       );
     match Stdlib.Hashtbl.find_opt table (meth, path) with
     | Some (converter, processor) -> (
-        body |> Cohttp_lwt.Body.to_string >>= fun body ->
+        let%lwt body = Cohttp_lwt.Body.to_string body in
         let json = Yojson.Safe.from_string body in
         match converter json with
         | Ok param -> processor param

@@ -1,4 +1,3 @@
-open Lwt
 open Base
 open State
 
@@ -22,7 +21,7 @@ let state ~(conf : Conf.t) ~logger =
 
 let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
   let rec loop state_exec =
-    state_exec () >>= fun next ->
+    let%lwt next = state_exec () in
     let next_state_exec =
       VolatileState.update_mode state.volatile_state ~logger next;
       match next with
@@ -55,7 +54,7 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   match VolatileState.leader_id state.volatile_state with
   | Some node_id ->
       let current_leader_node = Conf.peer_node conf ~node_id in
-      request current_leader_node >>= fun result ->
+      let%lwt result = request current_leader_node in
       Logger.debug logger
         (Printf.sprintf "Sending command to node(%d) : %s" node_id s);
       Lwt.return
