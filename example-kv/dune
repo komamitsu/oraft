@@ -1,5 +1,5 @@
 (executable
- (name oraft_example)
+ (name oraft_kv)
  (libraries oraft)
  (preprocess (pps lwt_ppx)))
 
