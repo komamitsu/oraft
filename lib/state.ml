@@ -122,8 +122,42 @@ end
 module PersistentLog = struct
   type t = { path : string; db : Sqlite3.db; logger : Logger.t }
 
-  let exec_sql ~db ~logger ?(cb = fun _ -> ()) sql =
-    let rc = Sqlite3.exec_not_null_no_headers db ~cb sql in
+  let exec_sql_with_result ~db ~logger ~cb ~init ~values ~sql =
+    let stmt = Sqlite3.prepare db sql in
+    let rc = Sqlite3.bind_names stmt values in
+    ignore
+      ( match rc with
+      | OK -> ()
+      | _ ->
+          Logger.error logger
+            (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
+               sql (Sqlite3.Rc.to_string rc)
+            )
+      );
+    let rc, result = Sqlite3.fold stmt ~f:cb ~init in
+    match rc with
+    | OK -> Some result
+    | _ ->
+        Logger.error logger
+          (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
+             (Sqlite3.Rc.to_string rc)
+          );
+        None
+
+
+  let exec_sql_without_result ~db ~logger ~values ~sql =
+    let stmt = Sqlite3.prepare db sql in
+    let rc = Sqlite3.bind_names stmt values in
+    ignore
+      ( match rc with
+      | OK -> ()
+      | _ ->
+          Logger.error logger
+            (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
+               sql (Sqlite3.Rc.to_string rc)
+            )
+      );
+    let rc = Sqlite3.step stmt in
     match rc with
     | OK -> ()
     | _ ->
@@ -135,26 +169,68 @@ module PersistentLog = struct
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    exec_sql ~db ~logger
-      ~cb:(fun row ->
-        let count = Array.get row 0 in
-        match count with
-        | "0" ->
-            exec_sql ~db ~logger
+    let sql = "select count() from sqlite_schema where name = ?" in
+    let result =
+      exec_sql_with_result ~db ~logger
+        ~cb:(fun count row ->
+          let count_result = Array.get row 0 in
+          match count_result with
+          | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
+          | _ ->
+              let count_str = Sqlite3.Data.to_string_debug count_result in
+              Logger.error logger
+                (Printf.sprintf
+                   "Setting-up database failed. sql:[%s]. count:[%s]" sql
+                   count_str
+                );
+              0
+        )
+        ~sql
+        ~values:[ ("table_name", Sqlite3.Data.TEXT "oraft_log") ]
+        ~init:0
+    in
+    ignore
+      ( match result with
+      | Some 0 ->
+          exec_sql_without_result ~db ~logger
+            ~sql:
               "create table if not exists oraft_log (\"index\" int primary key, \"term\" int, \"data\" text)"
-        | _ -> ()
-      )
-      "select count() from sqlite_schema where name = 'oraft_log'";
+            ~values:[]
+      | Some 1 -> ()
+      | _ ->
+          Logger.error logger
+            (Printf.sprintf "Setting-up database failed. sql:[%s]" sql)
+      );
     db
 
 
   let fetch_from_row ~row ~col_index = Array.get row col_index
 
-  let log_from_row ~row =
+  let fetch_int_from_row t ~row ~col_index =
+    match fetch_from_row ~row ~col_index with
+    | Sqlite3.Data.INT x -> Int64.to_int_exn x
+    | _ as wrong_value ->
+        let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
+        Logger.error t.logger
+          (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
+        0
+
+
+  let fetch_string_from_row t ~row ~col_index =
+    match fetch_from_row ~row ~col_index with
+    | Sqlite3.Data.TEXT x -> x
+    | _ as wrong_value ->
+        let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
+        Logger.error t.logger
+          (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
+        ""
+
+
+  let log_from_row t ~row =
     (* FIXME: This depends on the order of the SELECT statement *)
-    let index = int_of_string (fetch_from_row ~row ~col_index:0) in
-    let term = int_of_string (fetch_from_row ~row ~col_index:1) in
-    let data = fetch_from_row ~row ~col_index:2 in
+    let index = fetch_int_from_row t ~row ~col_index:0 in
+    let term = fetch_int_from_row t ~row ~col_index:1 in
+    let data = fetch_string_from_row t ~row ~col_index:2 in
     PersistentLogEntry.create ~index ~term ~data
 
 
@@ -165,33 +241,40 @@ module PersistentLog = struct
 
 
   let last_index t =
-    let count = ref None in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row ->
-        count := Some (int_of_string (fetch_from_row ~row ~col_index:0))
-      )
-      "select count(1) from oraft_log";
-    match !count with
+    let result =
+      exec_sql_with_result ~db:t.db ~logger:t.logger
+        ~cb:(fun count row -> count + fetch_int_from_row t ~row ~col_index:0)
+        ~sql:"select count(1) from oraft_log" ~values:[] ~init:0
+    in
+    match result with
     | Some x -> x
-    | _ ->
-        Logger.error t.logger "Failed to get the total record count";
+    | None ->
+        Logger.error t.logger "Failed to get last index";
         -1
 
 
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in
-    let records = ref [] in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row ->
-        let r = log_from_row ~row in
-        records := r :: !records
-      )
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit %d"
-         order n
-      );
-    !records
+    let result =
+      exec_sql_with_result ~db:t.db ~logger:t.logger
+        ~cb:(fun result row ->
+          let r = log_from_row t ~row in
+          r :: result
+        )
+        ~sql:
+          "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" :order limit :limit"
+        ~values:
+          [
+            ("order", Sqlite3.Data.TEXT order);
+            ("limit", Sqlite3.Data.INT (Int64.of_int n));
+          ]
+        ~init:[]
+    in
+    match result with
+    | Some x -> x
+    | None ->
+        Logger.error t.logger "Failed to fetch records";
+        []
 
 
   let show t =
@@ -205,15 +288,12 @@ module PersistentLog = struct
   let log t ~logger = Logger.debug logger ("PersistentLog: " ^ show t)
 
   let get t i =
-    let record = ref None in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row -> record := Some (log_from_row ~row))
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = %d"
-         i
-      );
-    !record
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun _ row -> log_from_row t ~row)
+      ~sql:
+        "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
+      ~values:[ ("index", Sqlite3.Data.INT (Int64.of_int i)) ]
+      ~init:PersistentLogEntry.empty
 
 
   let get_exn t i =
@@ -226,30 +306,36 @@ module PersistentLog = struct
 
 
   let set_and_truncate_suffix t (entry : PersistentLogEntry.t) =
-    exec_sql ~db:t.db ~logger:t.logger
-      (* TODO: Use prepared statement *)
-      (* TODO: Check updated record count *)
-      (Printf.sprintf
-         "begin;
-      update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d;
-      delete from oraft_log where \"index\" > %d;
-      commit"
-         entry.term entry.data entry.index entry.index
-      )
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:
+        "begin;
+        update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index;
+        delete from oraft_log where \"index\" > :index;
+        commit"
+      ~values:
+        [
+          ("term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          ("data", Sqlite3.Data.TEXT entry.data);
+          ("index", Sqlite3.Data.INT (Int64.of_int entry.index));
+        ]
 
 
   let add t (entry : PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
-    exec_sql ~db:t.db ~logger:t.logger
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "insert into oraft_log (\"index\", \"term\", \"data\") values (%d, %d, '%s')"
-         entry.index entry.term entry.data
-      )
+    let sql =
+      "insert into oraft_log (\"index\", \"term\", \"data\") values (:index, :term, :data)"
+    in
+    exec_sql_without_result ~db:t.db ~logger:t.logger ~sql
+      ~values:
+        [
+          ("term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          ("data", Sqlite3.Data.TEXT entry.data);
+          ("index", Sqlite3.Data.INT (Int64.of_int entry.index));
+        ]
 
 
   let last_log t =
-    (* FIXME *)
+    (* FIXME: Do this in a transaction *)
     match get t (last_index t) with
     | Some last_log -> last_log
     | None -> PersistentLogEntry.empty
