@@ -3,12 +3,12 @@
 set -ex -o pipefail
 
 root_dir=$(dirname $0)/..
-example_dir=$root_dir/example
+example_dir=$root_dir/example-kv
 wait_after_launch=$1
 wait_for_each_op=$2
 wait_until_exit=$3
 
-# Clear state and log files in `example`
+# Clear state and log files in `example-kv`
 pushd $example_dir
 rm -rf oraft-*/oraft.log
 rm -rf oraft-*/state
@@ -61,7 +61,7 @@ function kill_5th_server() {
 
 function kill_server() {
     ppid=$1
-    pkill -P $ppid oraft_example
+    pkill -P $ppid oraft_kv
 }
 
 function kill_all_servers() {

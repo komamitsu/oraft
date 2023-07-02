@@ -60,20 +60,20 @@ $ chaos_test/run.sh
 
 ```json
 {
-    "node_id": 4,
+    "node_id": 2,
     "nodes": [
-        {"id": 1, "host": "localhost", "port": 7891},
-        {"id": 2, "host": "localhost", "port": 7892},
-        {"id": 3, "host": "localhost", "port": 7893},
-        {"id": 4, "host": "localhost", "port": 7894},
-        {"id": 5, "host": "localhost", "port": 7895}
+        {"id": 1, "host": "localhost", "port": 7891, "app_port": 8181},
+        {"id": 2, "host": "localhost", "port": 7892, "app_port": 8182},
+        {"id": 3, "host": "localhost", "port": 7893, "app_port": 8183}
     ],
     "log_file": "oraft.log",
     "log_level": "INFO",
     "state_dir": "state",
-    "election_timeout_millis": 300,
-    "heartbeat_interval_millis": 50
+    "election_timeout_millis": 200,
+    "heartbeat_interval_millis": 50,
+    "request_timeout_millis": 100
 }
+
 ```
 
 `node_id` needs to be modified for each node.
@@ -83,12 +83,13 @@ $ chaos_test/run.sh
 The following code is a very simple application that uses ORaft.
 
 ```ocaml
-let main =
+let main ~conf_file =
   let oraft =
-    Oraft.start ~conf_file:"/path/to/oraft-config.json" ~apply_log:(fun i s ->
-      Printf.printf
-        "Received %d th command. Maybe you'd better take care of '%s' instead of just printing\n" i s;
-      flush stdout
+    Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
+        Printf.printf
+          "[node_id:%d, log_index:%d] %s\n"
+          node_id log_index log_data;
+        flush stdout
     )
   in
   let rec loop () =
@@ -98,18 +99,31 @@ let main =
     loop ()
   in
   Lwt.join [ loop (); oraft.process ] |> Lwt_main.run
+
+
+let () =
+  let open Command.Let_syntax in
+  Command.basic ~summary:"Simple example application for ORaft"
+    [%map_open
+      let config =
+        flag "config" (required string) ~doc:"CONFIG Config file path"
+      in
+      fun () -> main ~conf_file:config]
+  |> Command_unix.run
 ```
+
+See `example-simple` project for details.
 
 ## Example
 
-This repo contains `example` project that is a simple KVS.
+This repo contains `example-kv` project that is a simple KVS.
 
 ### Run a cluster on multi processes
 
 You can execute the project like this:
 
 ```
-$ ./example/run_all.sh
+$ ./example-kv/run_all.sh
 ```
 
 5 Raft application processes will start.
