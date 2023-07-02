@@ -1,9 +1,8 @@
 let main ~conf_file =
   let oraft =
     Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
-        Printf.printf
-          "Received %d th command from node_id:%d. Maybe you'd better take care of '%s' instead of just printing\n"
-          log_index node_id log_data;
+        Printf.printf "[node_id:%d, log_index:%d] %s\n" node_id log_index
+          log_data;
         flush stdout
     )
   in
@@ -23,5 +22,5 @@ let () =
       let config =
         flag "config" (required string) ~doc:"CONFIG Config file path"
       in
-      fun () -> ignore (main ~conf_file:config)]
+      fun () -> main ~conf_file:config]
   |> Command_unix.run

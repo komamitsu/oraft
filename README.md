@@ -67,7 +67,7 @@ $ chaos_test/run.sh
         {"id": 3, "host": "localhost", "port": 7893, "app_port": 8183}
     ],
     "log_file": "oraft.log",
-    "log_level": "DEBUG",
+    "log_level": "INFO",
     "state_dir": "state",
     "election_timeout_millis": 200,
     "heartbeat_interval_millis": 50,
@@ -86,10 +86,10 @@ The following code is a very simple application that uses ORaft.
 let main ~conf_file =
   let oraft =
     Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
-      Printf.printf
-        "Received %d th command from node_id:%d. Maybe you'd better take care of '%s' instead of just printing\n"
-        log_index node_id log_data;
-      flush stdout
+        Printf.printf
+          "[node_id:%d, log_index:%d] %s\n"
+          node_id log_index log_data;
+        flush stdout
     )
   in
   let rec loop () =
@@ -103,14 +103,12 @@ let main ~conf_file =
 
 let () =
   let open Command.Let_syntax in
-  Command.basic
-    ~summary: "Simple example application for ORaft"
+  Command.basic ~summary:"Simple example application for ORaft"
     [%map_open
       let config =
         flag "config" (required string) ~doc:"CONFIG Config file path"
       in
-      fun () -> ignore (main ~conf_file:config)
-    ]
+      fun () -> main ~conf_file:config]
   |> Command_unix.run
 ```
 
