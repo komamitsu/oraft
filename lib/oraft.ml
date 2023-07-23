@@ -12,11 +12,15 @@ type t = {
 }
 
 let state ~(conf : Conf.t) ~logger =
-  {
-    persistent_state = PersistentState.load ~state_dir:conf.state_dir;
-    persistent_log = PersistentLog.load ~state_dir:conf.state_dir ~logger;
-    volatile_state = VolatileState.create ();
-  }
+  match PersistentLog.load ~state_dir:conf.state_dir ~logger with
+  | Ok persistent_log ->
+      Ok
+        {
+          persistent_state = PersistentState.load ~state_dir:conf.state_dir;
+          persistent_log;
+          volatile_state = VolatileState.create ();
+        }
+  | Error msg -> Error msg
 
 
 let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
