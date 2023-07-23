@@ -169,7 +169,7 @@ module PersistentLog = struct
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    let sql = "select count() from sqlite_schema where name = ?" in
+    let sql = "select count() from sqlite_schema where name = :table_name" in
     let result =
       exec_sql_with_result ~db ~logger
         ~cb:(fun count row ->
@@ -186,7 +186,7 @@ module PersistentLog = struct
               0
         )
         ~sql
-        ~values:[ ("table_name", Sqlite3.Data.TEXT "oraft_log") ]
+        ~values:[ (":table_name", Sqlite3.Data.TEXT "oraft_log") ]
         ~init:0
     in
     ignore
@@ -265,8 +265,8 @@ module PersistentLog = struct
           "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" :order limit :limit"
         ~values:
           [
-            ("order", Sqlite3.Data.TEXT order);
-            ("limit", Sqlite3.Data.INT (Int64.of_int n));
+            (":order", Sqlite3.Data.TEXT order);
+            (":limit", Sqlite3.Data.INT (Int64.of_int n));
           ]
         ~init:[]
     in
@@ -292,7 +292,7 @@ module PersistentLog = struct
       ~cb:(fun _ row -> log_from_row t ~row)
       ~sql:
         "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
-      ~values:[ ("index", Sqlite3.Data.INT (Int64.of_int i)) ]
+      ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int i)) ]
       ~init:PersistentLogEntry.empty
 
 
