@@ -137,6 +137,7 @@ module PersistentLog = struct
     let rc, result = Sqlite3.fold stmt ~f:cb ~init in
     match rc with
     | OK -> Some result
+    | DONE -> Some result
     | _ ->
         Logger.error logger
           (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
@@ -151,6 +152,7 @@ module PersistentLog = struct
     ignore
       ( match rc with
       | OK -> ()
+      | DONE -> ()
       | _ ->
           Logger.error logger
             (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
@@ -160,6 +162,7 @@ module PersistentLog = struct
     let rc = Sqlite3.step stmt in
     match rc with
     | OK -> ()
+    | DONE -> ()
     | _ ->
         Logger.error logger
           (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
@@ -175,6 +178,7 @@ module PersistentLog = struct
         ~cb:(fun count row ->
           let count_result = Array.get row 0 in
           match count_result with
+          (* Expecting only a row, but accumulating just in case *)
           | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
           | _ ->
               let count_str = Sqlite3.Data.to_string_debug count_result in
