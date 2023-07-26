@@ -1,6 +1,7 @@
 open Core
 open Base
 open State
+open Printf
 
 (* Leaders:
  * - Upon election: send initial empty AppendEntries RPCs
@@ -37,6 +38,9 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
+  (* TODO : Return Result type*)
+  let result = PersistentLog.last_index state.persistent_log in
+  let last_log_index = match result with Ok x -> x | Error _ -> -1 in
   {
     conf;
     logger =
@@ -49,7 +53,7 @@ let init ~conf ~apply_log ~state =
         volatile_state_on_leader =
           VolatileStateOnLeader.create
             ~n:(List.length (Conf.peer_nodes conf))
-            ~last_log_index:(PersistentLog.last_index state.persistent_log);
+            ~last_log_index;
       };
     lock = Lwt_mutex.create ();
     should_step_down = false;
@@ -57,6 +61,13 @@ let init ~conf ~apply_log ~state =
     append_entries_sender = None;
   }
 
+
+let unexpected_error msg =
+  Cohttp_lwt_unix.Server.respond_string ~status:`Internal_server_error ~body:msg
+    ()
+
+
+let error fname msg = Error (Printf.sprintf "[%s.%s] %s" __MODULE__ fname msg)
 
 let step_down t =
   Logger.info t.logger "Stepping down";
@@ -79,30 +90,38 @@ let append_entries t =
   then (
     Logger.info t.logger
       "Avoiding sending append_entries since it's stepping down";
-    Lwt.return false
+    Lwt.return (Ok false)
   )
   else (
     let persistent_log = t.state.common.persistent_log in
-    let volatile_state = t.state.common.volatile_state in
-    let last_log_index = PersistentLog.last_index persistent_log in
-
-    let%lwt _ =
-      match t.append_entries_sender with
-      | Some sender ->
-          Append_entries_sender.wait_append_entries_response sender
-            ~log_index:last_log_index
-      | None ->
-          Logger.error t.logger "Append_entries_sender isn't initalized";
-          Lwt.return ()
-    in
-    VolatileState.update_commit_index volatile_state last_log_index;
-    VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-        let log = PersistentLog.get_exn persistent_log i in
-        t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
-          ~log_data:log.data
-    );
-    (* TODO Fix the return value *)
-    Lwt.return true
+    match PersistentLog.last_index persistent_log with
+    | Ok last_log_index ->
+        let%lwt _ =
+          match t.append_entries_sender with
+          | Some sender ->
+              Append_entries_sender.wait_append_entries_response sender
+                ~log_index:last_log_index
+          | None ->
+              Logger.error t.logger "Append_entries_sender isn't initalized";
+              Lwt.return ()
+        in
+        (* TODO Revisite this comment out. The same things are done in AppendEntriesHandler
+           VolatileState.update_commit_index volatile_state last_log_index;
+           VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+               (* TODO Improve error handling *)
+               ignore (
+                 match PersistentLog.get persistent_log i with
+                 | Ok (Some log) ->
+                     Ok (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data)
+                 | Ok None -> error __FUNCTION__ (sprintf "failed to get the log. index:[%d]" i)
+                 | Error msg -> error __FUNCTION__ msg
+               )
+             )
+           ;
+        *)
+        (* TODO Fix the return value *)
+        Lwt.return (Ok true)
+    | Error msg -> Lwt.return (error __FUNCTION__ msg)
   )
 
 
@@ -114,23 +133,35 @@ let handle_client_command t ~(param : Params.client_command_request) =
     (Printf.sprintf "Received client_command %s"
        (Params.show_client_command_request param)
     );
-  let next_index = PersistentLog.last_index persistent_log + 1 in
-  let term = PersistentState.current_term t.state.common.persistent_state in
-  PersistentLog.append persistent_log
-    ~entries:[ { term; index = next_index; data = param.data } ];
-  let%lwt result = append_entries t in
-  let status, response_body =
-    if result
-    then (
-      let body =
-        Params.client_command_response_to_yojson { success = true }
-        |> Yojson.Safe.to_string
+  match PersistentLog.last_index persistent_log with
+  | Ok last_index -> (
+      let next_index = last_index + 1 in
+      let term = PersistentState.current_term t.state.common.persistent_state in
+      let result =
+        PersistentLog.append persistent_log
+          ~entries:[ { term; index = next_index; data = param.data } ]
       in
-      (`OK, body)
+      match result with
+      | Ok () ->
+          let%lwt result = append_entries t in
+          let status, response_body =
+            match result with
+            | Ok success ->
+                if success
+                then (
+                  let body =
+                    Params.client_command_response_to_yojson { success = true }
+                    |> Yojson.Safe.to_string
+                  in
+                  (`OK, body)
+                )
+                else (`Internal_server_error, "Failed in append_entries")
+            | Error msg -> (`Internal_server_error, msg)
+          in
+          Cohttp_lwt_unix.Server.respond_string ~status ~body:response_body ()
+      | Error msg -> unexpected_error msg
     )
-    else (`Internal_server_error, "")
-  in
-  Cohttp_lwt_unix.Server.respond_string ~status ~body:response_body ()
+  | Error msg -> unexpected_error msg
 
 
 let request_handlers t =
@@ -152,15 +183,20 @@ let request_handlers t =
       function
       | APPEND_ENTRIES_REQUEST x when not t.should_step_down ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
-                ~logger:t.logger ~apply_log:t.apply_log
-                ~cb_valid_request:(fun () -> ()
-                )
-                  (* All Servers:
-                   * - If RPC request or response contains term T > currentTerm:
-                   *   set currentTerm = T, convert to follower (§5.1) *)
-                ~cb_newer_term:(fun () -> step_down t)
-                ~handle_same_term_as_newer:false ~param:x
+              let result =
+                Append_entries_handler.handle ~conf:t.conf ~state:t.state.common
+                  ~logger:t.logger ~apply_log:t.apply_log
+                  ~cb_valid_request:(fun () -> ()
+                  )
+                    (* All Servers:
+                     * - If RPC request or response contains term T > currentTerm:
+                     *   set currentTerm = T, convert to follower (§5.1) *)
+                  ~cb_newer_term:(fun () -> step_down t)
+                  ~handle_same_term_as_newer:false ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request ()
     );
@@ -173,14 +209,20 @@ let request_handlers t =
       function
       | REQUEST_VOTE_REQUEST x when not t.should_step_down ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Request_vote_handler.handle ~state:t.state.common ~logger:t.logger
-                ~cb_valid_request:(fun () -> ()
-                )
-                  (* All Servers:
-                   * - If RPC request or response contains term T > currentTerm:
-                   *   set currentTerm = T, convert to follower (§5.1) *)
-                ~cb_newer_term:(fun () -> step_down t)
-                ~param:x
+              let result =
+                Request_vote_handler.handle ~state:t.state.common
+                  ~logger:t.logger
+                  ~cb_valid_request:(fun () -> ()
+                  )
+                    (* All Servers:
+                     * - If RPC request or response contains term T > currentTerm:
+                     *   set currentTerm = T, convert to follower (§5.1) *)
+                  ~cb_newer_term:(fun () -> step_down t)
+                  ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request ()
     );

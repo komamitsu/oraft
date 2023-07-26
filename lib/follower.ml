@@ -32,6 +32,11 @@ let init ~conf ~apply_log ~state =
   }
 
 
+let unexpected_error msg =
+  Cohttp_lwt_unix.Server.respond_string ~status:`Internal_server_error ~body:msg
+    ()
+
+
 let unexpected_request t =
   Logger.error t.logger "Unexpected request";
   Lwt.return (Cohttp.Response.make ~status:`Internal_server_error (), `Empty)
@@ -49,15 +54,20 @@ let request_handlers t ~election_timer =
       function
       | APPEND_ENTRIES_REQUEST x ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Append_entries_handler.handle ~conf:t.conf ~state:t.state
-                ~logger:t.logger
-                ~apply_log:t.apply_log
-                  (* If election timeout elapses without receiving AppendEntries
-                   * RPC from current leader or granting vote to candidate:
-                   * convert to candidate *)
-                ~cb_valid_request:(fun () -> Timer.update election_timer)
-                ~cb_newer_term:(fun () -> ())
-                ~handle_same_term_as_newer:false ~param:x
+              let result =
+                Append_entries_handler.handle ~conf:t.conf ~state:t.state
+                  ~logger:t.logger
+                  ~apply_log:t.apply_log
+                    (* If election timeout elapses without receiving AppendEntries
+                     * RPC from current leader or granting vote to candidate:
+                     * convert to candidate *)
+                  ~cb_valid_request:(fun () -> Timer.update election_timer)
+                  ~cb_newer_term:(fun () -> ())
+                  ~handle_same_term_as_newer:false ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request t
     );
@@ -70,14 +80,19 @@ let request_handlers t ~election_timer =
       function
       | REQUEST_VOTE_REQUEST x ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Request_vote_handler.handle ~state:t.state
-                ~logger:t.logger
-                  (* If election timeout elapses without receiving AppendEntries
-                   * RPC from current leader or granting vote to candidate:
-                   * convert to candidate *)
-                ~cb_valid_request:(fun () -> Timer.update election_timer)
-                ~cb_newer_term:(fun () -> ())
-                ~param:x
+              let result =
+                Request_vote_handler.handle ~state:t.state
+                  ~logger:t.logger
+                    (* If election timeout elapses without receiving AppendEntries
+                     * RPC from current leader or granting vote to candidate:
+                     * convert to candidate *)
+                  ~cb_valid_request:(fun () -> Timer.update election_timer)
+                  ~cb_newer_term:(fun () -> ())
+                  ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request t
     );

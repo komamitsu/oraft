@@ -2,6 +2,7 @@ open Core
 open Cohttp_lwt_unix
 open Yojson.Basic
 open State
+open Printf
 
 (* Invoked by leader to replicate log entries (§5.3); also used as
  * heartbeat (§5.2).
@@ -45,64 +46,62 @@ let append_entries ~(conf : Conf.t) ~logger ~state
         VolatileState.update_commit_index volatile_state
           (min param.leader_commit last_index)
     | Error msg ->
-        (let msg =
-           Printf.sprintf "Failed to handle append_entries. error:[%s]" msg
-         in
-         Logger.error logger msg;
-         error := Some (Error msg)
+        let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
+        Logger.error logger msg;
+        error := Some (Error msg)
+  );
+
+  if Option.is_none !error
+  then
+    if List.length param.entries > 0
+    then (
+      let first_entry = List.hd_exn param.entries in
+      Logger.debug logger
+        (sprintf
+           "This param isn't empty, so appending entries(lentgh: %d, first_entry.term: %d, first_entry.index: %d)"
+           (List.length param.entries)
+           first_entry.term first_entry.index
         );
+      (* If an existing entry conflicts with a new one (same index
+         *  but different terms), delete the existing entry and all that
+         *  follow it (§5.3)
+         *
+         * Append any new entries not already in the log *)
+      match PersistentLog.append persistent_log ~entries:param.entries with
+      | Ok () -> ()
+      | Error msg ->
+          let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
+          Logger.error logger msg;
+          error := Some (Error msg)
+    );
 
-        if Option.is_none !error
-        then
-          if List.length param.entries > 0
-          then (
-            let first_entry = List.hd_exn param.entries in
-            Logger.debug logger
-              (Printf.sprintf
-                 "This param isn't empty, so appending entries(lentgh: %d, first_entry.term: %d, first_entry.index: %d)"
-                 (List.length param.entries)
-                 first_entry.term first_entry.index
-              );
-            (* If an existing entry conflicts with a new one (same index
-             *  but different terms), delete the existing entry and all that
-             *  follow it (§5.3)
-             *
-             * Append any new entries not already in the log *)
-            match
-              PersistentLog.append persistent_log ~entries:param.entries
-            with
-            | Ok () -> ()
-            | Error msg ->
-                let msg =
-                  Printf.sprintf "Failed to handle append_entries. error:[%s]"
-                    msg
-                in
-                Logger.error logger msg;
-                error := Some (Error msg)
-          );
-
-        (* All Servers:
-         * - If commitIndex > lastApplied: increment lastApplied, apply
-         *   log[lastApplied] to state machine (§5.3)
-         *)
-        if Option.is_none !error
-        then (
-          VolatileState.apply_logs volatile_state ~logger ~f:(fun i ->
-              match PersistentLog.get persistent_log i with
-              | Ok log ->
-                  apply_log ~node_id:conf.node_id ~log_index:log.index
-                    ~log_data:log.data
-              | Error msg ->
-                  let msg =
-                    Printf.sprintf "Failed to handle append_entries. error:[%s]"
-                      msg
-                  in
-                  Logger.error logger msg
-          );
-          Ok ()
-        )
-        else !error
-  )
+  (* All Servers:
+   * - If commitIndex > lastApplied: increment lastApplied, apply
+   *   log[lastApplied] to state machine (§5.3)
+   *)
+  match !error with
+  | None ->
+      VolatileState.apply_logs volatile_state ~logger ~f:(fun i ->
+          (* TODO Improve error handling *)
+          match PersistentLog.get persistent_log i with
+          | Ok (Some log) ->
+              apply_log ~node_id:conf.node_id ~log_index:log.index
+                ~log_data:log.data
+          | Ok None ->
+              let msg =
+                sprintf
+                  "Failed to handle append_entries. error:[The target log is not found. index:[%d]]"
+                  i
+              in
+              Logger.error logger msg
+          | Error msg ->
+              let msg =
+                sprintf "Failed to handle append_entries. error:[%s]" msg
+              in
+              Logger.error logger msg
+      );
+      Ok ()
+  | Some error -> error
 
 
 let log_error_req ~state ~logger ~msg ~(param : Params.append_entries_request) =
@@ -119,7 +118,7 @@ let log_error_req ~state ~logger ~msg ~(param : Params.append_entries_request) =
     else PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1))
   in
   Logger.warn logger
-    (Printf.sprintf
+    (sprintf
        "%s. param:{term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d, first_entry:%s, last_entry:%s}, state:%s"
        msg param.term param.leader_id param.prev_log_term param.prev_log_index
        entries_size param.leader_commit first_entry last_entry
@@ -132,7 +131,7 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
   let persistent_state = state.persistent_state in
   let persistent_log = state.persistent_log in
   match PersistentLog.get persistent_log param.prev_log_index with
-  | Ok stored_prev_log ->
+  | Ok stored_prev_log -> (
       let result =
         if PersistentState.detect_old_leader persistent_state ~logger
              ~other_term:param.term
@@ -140,7 +139,7 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
           (* Reply false if term < currentTerm (§5.1) *)
           log_error_req ~state ~logger
             ~msg:"Received append_entries req that has old team" ~param;
-          false
+          Ok false
         )
         else if (not (param.prev_log_term = -1 && param.prev_log_index = 0))
                 &&
@@ -153,29 +152,33 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
           log_error_req ~state ~logger
             ~msg:"Received append_entries req that has unexpected prev_log"
             ~param;
-          false
+          Ok false
         )
         else (
           cb_valid_request ();
           (* TODO: Error handling *)
-          append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term
-            ~handle_same_term_as_newer;
+          let result =
+            append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term
+              ~handle_same_term_as_newer
+          in
           State.log state ~logger;
-          true
+          match result with Ok () -> Ok true | Error msg -> Error msg
         )
       in
-      let response_body =
-        `Assoc
-          [
-            ("term", `Int (PersistentState.current_term persistent_state));
-            ("success", `Bool result);
-          ]
-        |> to_string
-      in
-      Ok (Server.respond_string ~status:`OK ~body:response_body ())
+      match result with
+      | Ok success ->
+          let response_body =
+            `Assoc
+              [
+                ("term", `Int (PersistentState.current_term persistent_state));
+                ("success", `Bool success);
+              ]
+            |> to_string
+          in
+          Ok (Server.respond_string ~status:`OK ~body:response_body ())
+      | Error msg -> Error msg
+    )
   | Error msg ->
-      let msg =
-        Printf.sprintf "Failed to handle append_entries. error:[%s]" msg
-      in
+      let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
       Logger.error logger msg;
       Error msg

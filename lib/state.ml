@@ -113,14 +113,13 @@ end
 module PersistentLogEntry = struct
   type t = { term : int; index : int; data : string } [@@deriving show, yojson]
 
-  let empty = { term = 0; index = 0; data = "" }
   let create ~index ~term ~data = { term; index; data }
   let from_string s = s
   let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ show t)
 end
 
 module PersistentLog = struct
-  type t = { path : string; db : Sqlite3.db; logger : Logger.t }
+  type t = { db : Sqlite3.db; logger : Logger.t }
 
   let exec_sql_with_result ~db ~logger ~cb ~init ~values ~sql =
     let stmt = Sqlite3.prepare db sql in
@@ -257,7 +256,7 @@ module PersistentLog = struct
   let load ~state_dir ~logger =
     let path = Filename.concat state_dir "log.db" in
     let result = setup_db ~path ~logger in
-    match result with Ok db -> Ok { db; path; logger } | Error _ as err -> err
+    match result with Ok db -> Ok { db; logger } | Error _ as err -> err
 
 
   let last_index t =
@@ -336,28 +335,16 @@ module PersistentLog = struct
     | Error _ as err -> err
 
 
-  (*
-  let get_exn t i =
-    match get t i with
-    | Some x -> x
-    | _ ->
-        Logger.error t.logger
-          (Printf.sprintf "Failed to get the record. index=%d" i);
-        PersistentLogEntry.empty
-        *)
-
   let set_and_truncate_suffix t (entry : PersistentLogEntry.t) =
     exec_sql_without_result ~db:t.db ~logger:t.logger
       ~sql:
-        "begin;
-        update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index;
-        delete from oraft_log where \"index\" > :index;
-        commit"
+        "update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index;
+        delete from oraft_log where \"index\" > :index;"
       ~values:
         [
-          ("term", Sqlite3.Data.INT (Int64.of_int entry.term));
-          ("data", Sqlite3.Data.TEXT entry.data);
-          ("index", Sqlite3.Data.INT (Int64.of_int entry.index));
+          (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          (":data", Sqlite3.Data.TEXT entry.data);
+          (":index", Sqlite3.Data.INT (Int64.of_int entry.index));
         ]
 
 
@@ -369,15 +356,15 @@ module PersistentLog = struct
     exec_sql_without_result ~db:t.db ~logger:t.logger ~sql
       ~values:
         [
-          ("term", Sqlite3.Data.INT (Int64.of_int entry.term));
-          ("data", Sqlite3.Data.TEXT entry.data);
-          ("index", Sqlite3.Data.INT (Int64.of_int entry.index));
+          (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          (":data", Sqlite3.Data.TEXT entry.data);
+          (":index", Sqlite3.Data.INT (Int64.of_int entry.index));
         ]
 
 
   let last_log t =
     match last_index t with
-    | Ok last_index -> (
+    | Ok last_index when last_index > 0 -> (
         match get t last_index with
         | Ok last_log -> Ok last_log
         | Error msg ->
@@ -389,6 +376,7 @@ module PersistentLog = struct
             Logger.error t.logger msg;
             Error msg
       )
+    | Ok _ -> Ok None
     | Error msg ->
         let msg = Printf.sprintf "Failed to get last log. error:[%s]" msg in
         Logger.error t.logger msg;

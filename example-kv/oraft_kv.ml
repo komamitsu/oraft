@@ -66,18 +66,21 @@ let kvs_incr id args =
 
 
 let oraft conf_file =
-  Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
-      with_flush_stdout (fun () ->
-          print_log
-          @@ Printf.sprintf "<<<< %d: APPLY(%d) : %s >>>>" node_id log_index
-               log_data
-      );
-      let id, cmd, args = parse_command log_data in
-      match cmd with
-      | "SET" -> kvs_set id args
-      | "INCR" -> kvs_incr id args
-      | _ -> ()
-  )
+  let result =
+    Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
+        with_flush_stdout (fun () ->
+            print_log
+            @@ Printf.sprintf "<<<< %d: APPLY(%d) : %s >>>>" node_id log_index
+                 log_data
+        );
+        let id, cmd, args = parse_command log_data in
+        match cmd with
+        | "SET" -> kvs_set id args
+        | "INCR" -> kvs_incr id args
+        | _ -> ()
+    )
+  in
+  match result with Ok oraft -> oraft | Error msg -> failwith msg
 
 
 let redirect_to_leader leader_host port body =

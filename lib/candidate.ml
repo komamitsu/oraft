@@ -1,6 +1,8 @@
 open Core
 open Base
 open State
+open Printf
+open Result
 
 (*
  * Candidates (§5.2):
@@ -43,6 +45,13 @@ let stepdown t ~election_timer =
   ()
 
 
+let error fname msg = Error (Printf.sprintf "[%s.%s] %s" __MODULE__ fname msg)
+
+let unexpected_error msg =
+  Cohttp_lwt_unix.Server.respond_string ~status:`Internal_server_error ~body:msg
+    ()
+
+
 let unexpected_request t =
   Logger.error t.logger
     (Printf.sprintf "Unexpected request (next_mode: %s)"
@@ -54,37 +63,55 @@ let unexpected_request t =
 let request_vote t ~election_timer =
   let persistent_state = t.state.persistent_state in
   let persistent_log = t.state.persistent_log in
-  let request_json =
-    let last_log = PersistentLog.last_log persistent_log in
-    let r : Params.request_vote_request =
-      {
-        term = PersistentState.current_term persistent_state;
-        candidate_id = t.conf.node_id;
-        last_log_term = last_log.term;
-        last_log_index = last_log.index;
-      }
-    in
-    Params.request_vote_request_to_yojson r
+  let result_request_json =
+    match PersistentLog.last_log persistent_log with
+    | Ok opt_last_log ->
+        let r : Params.request_vote_request =
+          match opt_last_log with
+          | Some last_log ->
+              {
+                term = PersistentState.current_term persistent_state;
+                candidate_id = t.conf.node_id;
+                last_log_term = last_log.term;
+                last_log_index = last_log.index;
+              }
+          | None ->
+              {
+                term = PersistentState.current_term persistent_state;
+                candidate_id = t.conf.node_id;
+                (* TODO: A function to return this is needed? *)
+                last_log_term = 0;
+                last_log_index = 0;
+              }
+        in
+        Ok (Params.request_vote_request_to_yojson r)
+    | Error msg -> error __FUNCTION__ msg
   in
-  let request =
-    Request_sender.post ~logger:t.logger ~url_path:"request_vote" ~request_json
-      ~timeout_millis:t.conf.request_timeout_millis ~my_node_id:t.conf.node_id
-      ~converter:(fun response_json ->
-        match Params.request_vote_response_of_yojson response_json with
-        | Ok param ->
-            (* All Servers:
-             * - If RPC request or response contains term T > currentTerm:
-             *   set currentTerm = T, convert to follower (§5.1)
-             *)
-            if PersistentState.detect_newer_term persistent_state
-                 ~logger:t.logger ~other_term:param.term
-            then stepdown t ~election_timer;
+  match result_request_json with
+  | Ok request_json ->
+      let request =
+        Request_sender.post ~logger:t.logger ~url_path:"request_vote"
+          ~request_json ~timeout_millis:t.conf.request_timeout_millis
+          ~my_node_id:t.conf.node_id ~converter:(fun response_json ->
+            match Params.request_vote_response_of_yojson response_json with
+            | Ok param ->
+                (* All Servers:
+                 * - If RPC request or response contains term T > currentTerm:
+                 *   set currentTerm = T, convert to follower (§5.1)
+                 *)
+                if PersistentState.detect_newer_term persistent_state
+                     ~logger:t.logger ~other_term:param.term
+                then stepdown t ~election_timer;
 
-            Ok (Params.REQUEST_VOTE_RESPONSE param)
-        | Error _ as err -> err
-    )
-  in
-  Lwt_list.map_p request (Conf.peer_nodes t.conf)
+                Ok (Params.REQUEST_VOTE_RESPONSE param)
+            | Error _ as err -> err
+        )
+      in
+      Lwt_list.map_p request (Conf.peer_nodes t.conf)
+  | Error msg ->
+      Logger.error t.logger (sprintf "request_vote failed. error:[%s]" msg);
+      (* TODO: Revisit here *)
+      Lwt_list.map_p Lwt.return []
 
 
 let request_handlers t ~election_timer =
@@ -99,16 +126,21 @@ let request_handlers t ~election_timer =
       function
       | APPEND_ENTRIES_REQUEST x when is_none t.next_mode ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Append_entries_handler.handle ~conf:t.conf ~state:t.state
-                ~logger:t.logger ~apply_log:t.apply_log
-                ~cb_valid_request:(fun () -> Timer.update election_timer
-                )
-                  (* All Servers:
-                   * - If RPC request or response contains term T > currentTerm:
-                   *   set currentTerm = T, convert to follower (§5.1) *)
-                  (* If AppendEntries RPC received from new leader: convert to follower *)
-                ~cb_newer_term:(fun () -> stepdown t ~election_timer)
-                ~handle_same_term_as_newer:true ~param:x
+              let result =
+                Append_entries_handler.handle ~conf:t.conf ~state:t.state
+                  ~logger:t.logger ~apply_log:t.apply_log
+                  ~cb_valid_request:(fun () -> Timer.update election_timer
+                  )
+                    (* All Servers:
+                     * - If RPC request or response contains term T > currentTerm:
+                     *   set currentTerm = T, convert to follower (§5.1) *)
+                    (* If AppendEntries RPC received from new leader: convert to follower *)
+                  ~cb_newer_term:(fun () -> stepdown t ~election_timer)
+                  ~handle_same_term_as_newer:true ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request t
     );
@@ -121,15 +153,20 @@ let request_handlers t ~election_timer =
       function
       | REQUEST_VOTE_REQUEST x when is_none t.next_mode ->
           Lwt_mutex.with_lock t.lock (fun () ->
-              Request_vote_handler.handle ~state:t.state ~logger:t.logger
-                ~cb_valid_request:(fun () -> ()
-                )
-                  (* All Servers:
-                   * - If RPC request or response contains term T > currentTerm:
-                   *   set currentTerm = T, convert to follower (§5.1)
-                   *)
-                ~cb_newer_term:(fun () -> stepdown t ~election_timer)
-                ~param:x
+              let result =
+                Request_vote_handler.handle ~state:t.state ~logger:t.logger
+                  ~cb_valid_request:(fun () -> ()
+                  )
+                    (* All Servers:
+                     * - If RPC request or response contains term T > currentTerm:
+                     *   set currentTerm = T, convert to follower (§5.1)
+                     *)
+                  ~cb_newer_term:(fun () -> stepdown t ~election_timer)
+                  ~param:x
+              in
+              match result with
+              | Ok response -> response
+              | Error msg -> unexpected_error msg
           )
       | _ -> unexpected_request t
     );

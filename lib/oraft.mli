@@ -13,4 +13,4 @@ type t = {
   current_state : unit -> current_state;
 }
 
-val start : conf_file:string -> apply_log:Base.apply_log -> t
+val start : conf_file:string -> apply_log:Base.apply_log -> (t, string) result
