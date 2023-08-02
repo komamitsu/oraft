@@ -1,5 +1,6 @@
 open Core
 open Printf
+open Result
 
 (* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
@@ -338,14 +339,17 @@ module PersistentLog = struct
   let set_and_truncate_suffix t (entry : PersistentLogEntry.t) =
     exec_sql_without_result ~db:t.db ~logger:t.logger
       ~sql:
-        "update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index;
-        delete from oraft_log where \"index\" > :index;"
+        "update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index"
       ~values:
         [
           (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
           (":data", Sqlite3.Data.TEXT entry.data);
           (":index", Sqlite3.Data.INT (Int64.of_int entry.index));
         ]
+    >>= fun () ->
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:"delete from oraft_log where \"index\" > :index"
+      ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int entry.index)) ]
 
 
   let add t (entry : PersistentLogEntry.t) =
