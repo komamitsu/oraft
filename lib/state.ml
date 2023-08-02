@@ -176,28 +176,26 @@ module PersistentLog = struct
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
     let sql = "select count() from sqlite_schema where name = :table_name" in
-    let result =
-      exec_sql_with_result ~db ~logger
-        ~cb:(fun count row ->
-          let count_result = Array.get row 0 in
-          match count_result with
-          (* Expecting only a row, but accumulating just in case *)
-          | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
-          | _ ->
-              let count_str = Sqlite3.Data.to_string_debug count_result in
-              Logger.error logger
-                (Printf.sprintf
-                   "Setting-up database failed. sql:[%s]. count:[%s]" sql
-                   count_str
-                );
-              0
-        )
-        ~sql
-        ~values:[ (":table_name", Sqlite3.Data.TEXT "oraft_log") ]
-        ~init:0
-    in
-    match result with
-    | Ok 0 -> (
+    exec_sql_with_result ~db ~logger
+      ~cb:(fun count row ->
+        let count_result = Array.get row 0 in
+        match count_result with
+        (* Expecting only a row, but accumulating just in case *)
+        | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
+        | _ ->
+            let count_str = Sqlite3.Data.to_string_debug count_result in
+            Logger.error logger
+              (Printf.sprintf "Setting-up database failed. sql:[%s]. count:[%s]"
+                 sql count_str
+              );
+            0
+      )
+      ~sql
+      ~values:[ (":table_name", Sqlite3.Data.TEXT "oraft_log") ]
+      ~init:0
+    >>= fun count ->
+    match count with
+    | 0 -> (
         let update_result =
           exec_sql_without_result ~db ~logger
             ~sql:
@@ -206,19 +204,12 @@ module PersistentLog = struct
         in
         match update_result with Ok () -> Ok db | Error _ as err -> err
       )
-    | Ok 1 -> Ok db
-    | Ok unexpected ->
+    | 1 -> Ok db
+    | unexpected ->
         let msg =
           Printf.sprintf
             "Setting-up database failed. sql:[%s], error:[Unexpected number of table: %d]"
             sql unexpected
-        in
-        Logger.error logger msg;
-        Error msg
-    | Error msg ->
-        let msg =
-          Printf.sprintf "Setting-up database failed. sql:[%s], error:[%s]" sql
-            msg
         in
         Logger.error logger msg;
         Error msg
@@ -261,42 +252,26 @@ module PersistentLog = struct
 
 
   let last_index t =
-    let result =
-      exec_sql_with_result ~db:t.db ~logger:t.logger
-        ~cb:(fun count row -> count + fetch_int_from_row t ~row ~col_index:0)
-        ~sql:"select count(1) from oraft_log" ~values:[] ~init:0
-    in
-    match result with
-    | Ok x -> Ok x
-    | Error msg ->
-        let msg = Printf.sprintf "Failed to get last index. error:[%s]" msg in
-        Logger.error t.logger msg;
-        Error msg
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun count row -> count + fetch_int_from_row t ~row ~col_index:0)
+      ~sql:"select count(1) from oraft_log" ~values:[] ~init:0
 
 
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in
-    let result =
-      exec_sql_with_result ~db:t.db ~logger:t.logger
-        ~cb:(fun result row ->
-          let r = log_from_row t ~row in
-          r :: result
-        )
-        ~sql:
-          "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" :order limit :limit"
-        ~values:
-          [
-            (":order", Sqlite3.Data.TEXT order);
-            (":limit", Sqlite3.Data.INT (Int64.of_int n));
-          ]
-        ~init:[]
-    in
-    match result with
-    | Ok x -> Ok x
-    | Error msg ->
-        let msg = Printf.sprintf "Failed to fetch records. error:[%s]" msg in
-        Logger.error t.logger msg;
-        Error msg
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun result row ->
+        let r = log_from_row t ~row in
+        r :: result
+      )
+      ~sql:
+        "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" :order limit :limit"
+      ~values:
+        [
+          (":order", Sqlite3.Data.TEXT order);
+          (":limit", Sqlite3.Data.INT (Int64.of_int n));
+        ]
+      ~init:[]
 
 
   let show t =
@@ -314,18 +289,17 @@ module PersistentLog = struct
   let log t ~logger = Logger.debug logger ("PersistentLog: " ^ show t)
 
   let get t i =
-    let rows =
-      exec_sql_with_result ~db:t.db ~logger:t.logger
-        ~cb:(fun a row -> log_from_row t ~row :: a)
-        ~sql:
-          "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
-        ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int i)) ]
-        ~init:[]
-    in
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun a row -> log_from_row t ~row :: a)
+      ~sql:
+        "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
+      ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int i)) ]
+      ~init:[]
+    >>= fun rows ->
     match rows with
-    | Ok [] -> Ok None
-    | Ok (x :: []) -> Ok (Some x)
-    | Ok _ ->
+    | [] -> Ok None
+    | x :: [] -> Ok (Some x)
+    | _ ->
         let msg =
           Printf.sprintf
             "Failed to get the record. index:[%d], msg:[Fetched multiple records]"
@@ -333,7 +307,6 @@ module PersistentLog = struct
         in
         Logger.error t.logger msg;
         Error msg
-    | Error _ as err -> err
 
 
   let set_and_truncate_suffix t (entry : PersistentLogEntry.t) =
@@ -354,10 +327,9 @@ module PersistentLog = struct
 
   let add t (entry : PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
-    let sql =
-      "insert into oraft_log (\"index\", \"term\", \"data\") values (:index, :term, :data)"
-    in
-    exec_sql_without_result ~db:t.db ~logger:t.logger ~sql
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:
+        "insert into oraft_log (\"index\", \"term\", \"data\") values (:index, :term, :data)"
       ~values:
         [
           (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
@@ -367,8 +339,9 @@ module PersistentLog = struct
 
 
   let last_log t =
-    match last_index t with
-    | Ok last_index when last_index > 0 -> (
+    last_index t >>= fun last_index ->
+    match last_index with
+    | last_index when last_index > 0 -> (
         match get t last_index with
         | Ok last_log -> Ok last_log
         | Error msg ->
@@ -380,11 +353,7 @@ module PersistentLog = struct
             Logger.error t.logger msg;
             Error msg
       )
-    | Ok _ -> Ok None
-    | Error msg ->
-        let msg = Printf.sprintf "Failed to get last log. error:[%s]" msg in
-        Logger.error t.logger msg;
-        Error msg
+    | _ -> Ok None
 
 
   let append t ~entries =
@@ -394,8 +363,9 @@ module PersistentLog = struct
         let entry = List.hd_exn entries in
         let rest_of_entries_from_param = List.tl_exn entries in
         let result =
-          match get t entry.index with
-          | Ok (Some existing) when entry.index <> existing.index ->
+          get t entry.index >>= fun corresponding_entry ->
+          match corresponding_entry with
+          | Some existing when entry.index <> existing.index ->
               let msg =
                 sprintf
                   "Failed to append entries. Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
@@ -404,7 +374,7 @@ module PersistentLog = struct
               in
               Logger.error t.logger msg;
               Error msg
-          | Ok (Some existing) when entry.term <> existing.term -> (
+          | Some existing when entry.term <> existing.term -> (
               match set_and_truncate_suffix t entry with
               | Ok () -> Ok ()
               | Error msg ->
@@ -413,8 +383,8 @@ module PersistentLog = struct
                   in
                   Error msg
             )
-          | Ok (Some _) -> Ok ()
-          | Ok None -> (
+          | Some _ -> Ok ()
+          | None -> (
               match add t entry with
               | Ok () -> Ok ()
               | Error msg ->
@@ -423,12 +393,6 @@ module PersistentLog = struct
                   in
                   Error msg
             )
-          | Error msg ->
-              let msg =
-                Printf.sprintf "Failed to append entries. error:[%s]" msg
-              in
-              Logger.error t.logger msg;
-              Error msg
         in
         match result with
         | Ok _ -> loop rest_of_entries_from_param
