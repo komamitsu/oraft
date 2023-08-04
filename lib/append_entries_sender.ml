@@ -1,6 +1,7 @@
 open Base
 open Core
 open State
+open Printf
 
 type t = {
   conf : Conf.t;
@@ -104,28 +105,45 @@ let prepare_entries t ~node_index ~node =
   let prev_log_index =
     VolatileStateOnLeader.next_index leader_state node_index - 1
   in
-  let last_log_index = PersistentLog.last_index persistent_log in
-  let prev_log_term =
-    match PersistentLog.get persistent_log prev_log_index with
-    | Some log -> log.term
-    | None -> -1
-  in
-  let entries =
-    List.init (last_log_index - prev_log_index) ~f:(fun i ->
-        let idx = i + prev_log_index + 1 in
-        match PersistentLog.get persistent_log idx with
-        | Some x -> Some x
-        | None ->
-            let msg =
-              Printf.sprintf
-                "Can't find the log(node_id:%d): i:%d, prev_log_index:%d"
-                node.id i prev_log_index
-            in
-            Logger.error t.logger msg;
-            None
+  match PersistentLog.last_index persistent_log with
+  | Ok last_log_index -> (
+      match PersistentLog.get persistent_log prev_log_index with
+      | Ok opt_log ->
+          let prev_log_term =
+            match opt_log with Some log -> log.term | None -> -1
+          in
+          let entries =
+            List.init (last_log_index - prev_log_index) ~f:(fun i ->
+                let idx = i + prev_log_index + 1 in
+                match PersistentLog.get persistent_log idx with
+                | Ok (Some x) -> Some x
+                | Ok None ->
+                    let msg =
+                      sprintf
+                        "Can't find the log(node_id:%d): i:%d, prev_log_index:%d"
+                        node.id i prev_log_index
+                    in
+                    Logger.error t.logger msg;
+                    None
+                | Error msg ->
+                    (* FIXME *)
+                    let msg =
+                      sprintf
+                        "Unexpected error occurred (node_id:%d): i:[%d], prev_log_index:[%d], error:[%s]"
+                        node.id i prev_log_index msg
+                    in
+                    Logger.error t.logger msg;
+                    None
+            )
+          in
+          Ok
+            ( prev_log_index,
+              prev_log_term,
+              List.filter_map ~f:(fun x -> x) entries
+            )
+      | Error msg -> Error msg
     )
-  in
-  (prev_log_index, prev_log_term, List.filter_map ~f:(fun x -> x) entries)
+  | Error msg -> Error msg
 
 
 let request_append_entry t ~node_index ~node =
@@ -144,24 +162,26 @@ let request_append_entry t ~node_index ~node =
    * - If AppendEntries fails because of log inconsistency:
    *   decrement nextIndex and retry (§5.3)
    *)
-  let prev_log_index, prev_log_term, entries =
-    prepare_entries t ~node_index ~node
-  in
-  let request_json =
-    let r : Params.append_entries_request =
-      {
-        term = current_term;
-        leader_id = t.conf.node_id;
-        prev_log_term;
-        prev_log_index;
-        entries;
-        leader_commit = VolatileState.commit_index volatile_state;
-      }
-    in
-    Params.append_entries_request_to_yojson r
-  in
-  send_request_and_update_peer_info t ~node_index ~node ~entries ~request_json
-    ~prev_log_index
+  match prepare_entries t ~node_index ~node with
+  | Ok (prev_log_index, prev_log_term, entries) ->
+      let request_json =
+        let r : Params.append_entries_request =
+          {
+            term = current_term;
+            leader_id = t.conf.node_id;
+            prev_log_term;
+            prev_log_index;
+            entries;
+            leader_commit = VolatileState.commit_index volatile_state;
+          }
+        in
+        Params.append_entries_request_to_yojson r
+      in
+      Ok
+        (send_request_and_update_peer_info t ~node_index ~node ~entries
+           ~request_json ~prev_log_index
+        )
+  | Error msg -> Error msg
 
 
 let interval_in_seconds t =
@@ -188,24 +208,38 @@ let append_entries_thread t ~node_index ~node =
           Lwt.return_unit
         )
         else (
-          let%lwt _ = request_append_entry t ~node_index ~node in
-          Lwt.return_unit
+          match request_append_entry t ~node_index ~node with
+          | Ok result ->
+              let%lwt _ = result in
+              Lwt.return_unit
+          | Error msg ->
+              Logger.error t.logger
+                (sprintf
+                   "Unexpected error occurred in %s (node_id:%d). error:[%s]"
+                   __FUNCTION__ node.id msg
+                );
+              Lwt.return_unit
         )
       in
 
       (* Sleep if the match_index of the node has cautght up with the last log index *)
       let persistent_log = t.state.common.persistent_log in
-      let last_log_index = PersistentLog.last_index persistent_log in
-      let leader_state = t.state.volatile_state_on_leader in
-      let match_index =
-        VolatileStateOnLeader.match_index leader_state node_index
-      in
-      let%lwt _ =
-        if last_log_index = match_index
-        then Lwt_unix.sleep interval_in_seconds
-        else Lwt.return_unit
-      in
-      loop ()
+      match PersistentLog.last_index persistent_log with
+      | Ok last_log_index ->
+          let leader_state = t.state.volatile_state_on_leader in
+          let match_index =
+            VolatileStateOnLeader.match_index leader_state node_index
+          in
+          let%lwt _ =
+            if last_log_index = match_index
+            then Lwt_unix.sleep interval_in_seconds
+            else Lwt.return_unit
+          in
+          loop ()
+      | Error msg ->
+          Logger.error t.logger msg;
+          let%lwt _ = Lwt_unix.sleep interval_in_seconds in
+          loop ()
     )
   in
   loop ()

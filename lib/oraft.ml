@@ -1,5 +1,6 @@
 open Base
 open State
+open Printf
 
 type leader_node = { host : string; port : int }
 type current_state = { mode : mode; term : int; leader : leader_node option }
@@ -12,11 +13,15 @@ type t = {
 }
 
 let state ~(conf : Conf.t) ~logger =
-  {
-    persistent_state = PersistentState.load ~state_dir:conf.state_dir;
-    persistent_log = PersistentLog.load ~state_dir:conf.state_dir ~logger;
-    volatile_state = VolatileState.create ();
-  }
+  match PersistentLog.load ~state_dir:conf.state_dir ~logger with
+  | Ok persistent_log ->
+      Ok
+        {
+          persistent_state = PersistentState.load ~state_dir:conf.state_dir;
+          persistent_log;
+          volatile_state = VolatileState.create ();
+        }
+  | Error msg -> Error msg
 
 
 let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
@@ -74,26 +79,33 @@ let start ~conf_file ~apply_log =
     Logger.create ~node_id:conf.node_id ~output_path:conf.log_file
       ~level:conf.log_level ()
   in
-  let state = state ~conf ~logger in
-  Logger.info logger "Starting Oraft";
-  let post_command = post_command ~conf ~logger ~state in
-  let initial_state_exec = Follower.run ~conf ~apply_log ~state in
-  {
-    conf;
-    process =
-      process ~conf ~logger ~apply_log ~state ~state_exec:initial_state_exec;
-    post_command;
-    current_state =
-      (fun () ->
-        let mode = VolatileState.mode state.volatile_state in
-        let term = PersistentState.current_term state.persistent_state in
-        let leader =
-          match VolatileState.leader_id state.volatile_state with
-          | Some x ->
-              let leader = Conf.peer_node conf ~node_id:x in
-              Some { host = leader.host; port = leader.app_port }
-          | None -> None
-        in
-        { mode; term; leader }
-      );
-  }
+  match state ~conf ~logger with
+  | Ok state ->
+      Logger.info logger "Starting Oraft";
+      let post_command = post_command ~conf ~logger ~state in
+      let initial_state_exec = Follower.run ~conf ~apply_log ~state in
+      Ok
+        {
+          conf;
+          process =
+            process ~conf ~logger ~apply_log ~state
+              ~state_exec:initial_state_exec;
+          post_command;
+          current_state =
+            (fun () ->
+              let mode = VolatileState.mode state.volatile_state in
+              let term = PersistentState.current_term state.persistent_state in
+              let leader =
+                match VolatileState.leader_id state.volatile_state with
+                | Some x ->
+                    let leader = Conf.peer_node conf ~node_id:x in
+                    Some { host = leader.host; port = leader.app_port }
+                | None -> None
+              in
+              { mode; term; leader }
+            );
+        }
+  | Error msg ->
+      let msg = sprintf "Failed to prepare state. error:[%s]" msg in
+      Logger.error logger msg;
+      Error msg

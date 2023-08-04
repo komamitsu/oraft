@@ -33,14 +33,13 @@ end
 module PersistentLog : sig
   type t
 
-  val load : state_dir:string -> logger:Logger.t -> t
+  val load : state_dir:string -> logger:Logger.t -> (t, string) result
   val show : t -> string
   val log : t -> logger:Logger.t -> unit
-  val get : t -> int -> PersistentLogEntry.t option
-  val get_exn : t -> int -> PersistentLogEntry.t
-  val last_index : t -> int
-  val last_log : t -> PersistentLogEntry.t
-  val append : t -> entries:PersistentLogEntry.t list -> unit
+  val get : t -> int -> (PersistentLogEntry.t option, string) result
+  val last_index : t -> (int, string) result
+  val last_log : t -> (PersistentLogEntry.t option, string) result
+  val append : t -> entries:PersistentLogEntry.t list -> (unit, string) result
 end
 
 (** Volatile state on all servers *)

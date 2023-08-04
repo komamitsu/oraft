@@ -22,4 +22,4 @@ val handle :
   cb_newer_term:(unit -> unit) ->
   handle_same_term_as_newer:bool ->
   param:Params.append_entries_request ->
-  (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
+  ((Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t, string) result

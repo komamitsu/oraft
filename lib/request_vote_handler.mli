@@ -12,4 +12,4 @@ val handle :
   cb_valid_request:(unit -> unit) ->
   cb_newer_term:(unit -> unit) ->
   param:Params.request_vote_request ->
-  (Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t
+  ((Cohttp.Response.t * Cohttp_lwt__.Body.t) Lwt.t, string) result

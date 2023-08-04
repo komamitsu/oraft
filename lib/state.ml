@@ -1,5 +1,6 @@
 open Core
 open Printf
+open Result
 
 (* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
@@ -113,146 +114,245 @@ end
 module PersistentLogEntry = struct
   type t = { term : int; index : int; data : string } [@@deriving show, yojson]
 
-  let empty = { term = 0; index = 0; data = "" }
   let create ~index ~term ~data = { term; index; data }
   let from_string s = s
   let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ show t)
 end
 
 module PersistentLog = struct
-  type t = { path : string; db : Sqlite3.db; logger : Logger.t }
+  type t = { db : Sqlite3.db; logger : Logger.t }
 
-  let exec_sql ~db ~logger ?(cb = fun _ -> ()) sql =
-    let rc = Sqlite3.exec_not_null_no_headers db ~cb sql in
+  let exec_sql_with_result ~db ~logger ~cb ~init ~values ~sql =
+    let stmt = Sqlite3.prepare db sql in
+    let rc = Sqlite3.bind_names stmt values in
+    ignore
+      ( match rc with
+      | OK -> ()
+      | _ ->
+          Logger.error logger
+            (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
+               sql (Sqlite3.Rc.to_string rc)
+            )
+      );
+    let rc, result = Sqlite3.fold stmt ~f:cb ~init in
     match rc with
-    | OK -> ()
+    | OK -> Ok result
+    | DONE -> Ok result
     | _ ->
-        Logger.error logger
-          (Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
-             (Sqlite3.Rc.to_string rc)
-          )
+        let msg =
+          Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
+            (Sqlite3.Rc.to_string rc)
+        in
+        Logger.error logger msg;
+        Error msg
+
+
+  let exec_sql_without_result ~db ~logger ~values ~sql =
+    let stmt = Sqlite3.prepare db sql in
+    let rc = Sqlite3.bind_names stmt values in
+    ignore
+      ( match rc with
+      | OK -> ()
+      | DONE -> ()
+      | _ ->
+          Logger.error logger
+            (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
+               sql (Sqlite3.Rc.to_string rc)
+            )
+      );
+    let rc = Sqlite3.step stmt in
+    match rc with
+    | OK -> Ok ()
+    | DONE -> Ok ()
+    | _ ->
+        let msg =
+          Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
+            (Sqlite3.Rc.to_string rc)
+        in
+        Logger.error logger msg;
+        Error msg
 
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    exec_sql ~db ~logger
-      ~cb:(fun row ->
-        let count = Array.get row 0 in
-        match count with
-        | "0" ->
-            exec_sql ~db ~logger
-              "create table if not exists oraft_log (\"index\" int primary key, \"term\" int, \"data\" text)"
-        | _ -> ()
+    let sql = "select count() from sqlite_schema where name = :table_name" in
+    exec_sql_with_result ~db ~logger
+      ~cb:(fun count row ->
+        let count_result = Array.get row 0 in
+        match count_result with
+        (* Expecting only a row, but accumulating just in case *)
+        | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
+        | _ ->
+            let count_str = Sqlite3.Data.to_string_debug count_result in
+            Logger.error logger
+              (Printf.sprintf "Setting-up database failed. sql:[%s]. count:[%s]"
+                 sql count_str
+              );
+            0
       )
-      "select count() from sqlite_schema where name = 'oraft_log'";
-    db
+      ~sql
+      ~values:[ (":table_name", Sqlite3.Data.TEXT "oraft_log") ]
+      ~init:0
+    >>= fun count ->
+    match count with
+    | 0 -> (
+        let update_result =
+          exec_sql_without_result ~db ~logger
+            ~sql:
+              "create table if not exists oraft_log (\"index\" int primary key, \"term\" int, \"data\" text)"
+            ~values:[]
+        in
+        match update_result with Ok () -> Ok db | Error _ as err -> err
+      )
+    | 1 -> Ok db
+    | unexpected ->
+        let msg =
+          Printf.sprintf
+            "Setting-up database failed. sql:[%s], error:[Unexpected number of table: %d]"
+            sql unexpected
+        in
+        Logger.error logger msg;
+        Error msg
 
 
   let fetch_from_row ~row ~col_index = Array.get row col_index
 
-  let log_from_row ~row =
+  let fetch_int_from_row t ~row ~col_index =
+    match fetch_from_row ~row ~col_index with
+    | Sqlite3.Data.INT x -> Int64.to_int_exn x
+    | _ as wrong_value ->
+        let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
+        Logger.error t.logger
+          (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
+        0
+
+
+  let fetch_string_from_row t ~row ~col_index =
+    match fetch_from_row ~row ~col_index with
+    | Sqlite3.Data.TEXT x -> x
+    | _ as wrong_value ->
+        let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
+        Logger.error t.logger
+          (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
+        ""
+
+
+  let log_from_row t ~row =
     (* FIXME: This depends on the order of the SELECT statement *)
-    let index = int_of_string (fetch_from_row ~row ~col_index:0) in
-    let term = int_of_string (fetch_from_row ~row ~col_index:1) in
-    let data = fetch_from_row ~row ~col_index:2 in
+    let index = fetch_int_from_row t ~row ~col_index:0 in
+    let term = fetch_int_from_row t ~row ~col_index:1 in
+    let data = fetch_string_from_row t ~row ~col_index:2 in
     PersistentLogEntry.create ~index ~term ~data
 
 
   let load ~state_dir ~logger =
     let path = Filename.concat state_dir "log.db" in
-    let db = setup_db ~path ~logger in
-    { db; path; logger }
+    let result = setup_db ~path ~logger in
+    match result with Ok db -> Ok { db; logger } | Error _ as err -> err
 
 
   let last_index t =
-    let count = ref None in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row ->
-        count := Some (int_of_string (fetch_from_row ~row ~col_index:0))
-      )
-      "select count(1) from oraft_log";
-    match !count with
-    | Some x -> x
-    | _ ->
-        Logger.error t.logger "Failed to get the total record count";
-        -1
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun count row -> count + fetch_int_from_row t ~row ~col_index:0)
+      ~sql:"select count(1) from oraft_log" ~values:[] ~init:0
 
 
   let fetch t ?(asc = true) n =
     let order = if asc then "asc" else "desc" in
-    let records = ref [] in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row ->
-        let r = log_from_row ~row in
-        records := r :: !records
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun result row ->
+        let r = log_from_row t ~row in
+        r :: result
       )
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit %d"
-         order n
-      );
-    !records
+      ~sql:
+        (sprintf
+           "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit :limit"
+           order
+        )
+      ~values:[ (":limit", Sqlite3.Data.INT (Int64.of_int n)) ]
+      ~init:[]
 
 
   let show t =
-    let entries = fetch t ~asc:false 3 in
-    sprintf
-      "{PersistentLog.path = \"%s\"; last_index = %d; last_entries = [%s]}"
-      t.path (last_index t)
-      (String.concat ~sep:", " (List.map entries ~f:PersistentLogEntry.show))
+    let entries =
+      match fetch t ~asc:false 3 with
+      | Ok xs -> String.concat ~sep:", " (List.map xs ~f:PersistentLogEntry.show)
+      | Error msg ->
+          Printf.sprintf "Failed to fetch last entries. error:[%s]" msg
+    in
+    let last_index = match last_index t with Ok x -> x | Error _ -> -1 in
+    sprintf "{PersistentLog.last_index = %d; last_entries = [%s]}" last_index
+      entries
 
 
   let log t ~logger = Logger.debug logger ("PersistentLog: " ^ show t)
 
   let get t i =
-    let record = ref None in
-    exec_sql ~db:t.db ~logger:t.logger
-      ~cb:(fun row -> record := Some (log_from_row ~row))
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = %d"
-         i
-      );
-    !record
-
-
-  let get_exn t i =
-    match get t i with
-    | Some x -> x
+    exec_sql_with_result ~db:t.db ~logger:t.logger
+      ~cb:(fun a row -> log_from_row t ~row :: a)
+      ~sql:
+        "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
+      ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int i)) ]
+      ~init:[]
+    >>= fun rows ->
+    match rows with
+    | [] -> Ok None
+    | x :: [] -> Ok (Some x)
     | _ ->
-        Logger.error t.logger
-          (Printf.sprintf "Failed to get the record. index=%d" i);
-        PersistentLogEntry.empty
+        let msg =
+          Printf.sprintf
+            "Failed to get the record. index:[%d], msg:[Fetched multiple records]"
+            i
+        in
+        Logger.error t.logger msg;
+        Error msg
 
 
   let set_and_truncate_suffix t (entry : PersistentLogEntry.t) =
-    exec_sql ~db:t.db ~logger:t.logger
-      (* TODO: Use prepared statement *)
-      (* TODO: Check updated record count *)
-      (Printf.sprintf
-         "begin;
-      update oraft_log set \"term\" = %d, \"data\" = '%s' where \"index\" = %d;
-      delete from oraft_log where \"index\" > %d;
-      commit"
-         entry.term entry.data entry.index entry.index
-      )
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:
+        "update oraft_log set \"term\" = :term, \"data\" = :data where \"index\" = :index"
+      ~values:
+        [
+          (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          (":data", Sqlite3.Data.TEXT entry.data);
+          (":index", Sqlite3.Data.INT (Int64.of_int entry.index));
+        ]
+    >>= fun () ->
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:"delete from oraft_log where \"index\" > :index"
+      ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int entry.index)) ]
 
 
   let add t (entry : PersistentLogEntry.t) =
     (* Maybe assertion of the previous entry would be good *)
-    exec_sql ~db:t.db ~logger:t.logger
-      (* TODO: Use prepared statement *)
-      (Printf.sprintf
-         "insert into oraft_log (\"index\", \"term\", \"data\") values (%d, %d, '%s')"
-         entry.index entry.term entry.data
-      )
+    exec_sql_without_result ~db:t.db ~logger:t.logger
+      ~sql:
+        "insert into oraft_log (\"index\", \"term\", \"data\") values (:index, :term, :data)"
+      ~values:
+        [
+          (":term", Sqlite3.Data.INT (Int64.of_int entry.term));
+          (":data", Sqlite3.Data.TEXT entry.data);
+          (":index", Sqlite3.Data.INT (Int64.of_int entry.index));
+        ]
 
 
   let last_log t =
-    (* FIXME *)
-    match get t (last_index t) with
-    | Some last_log -> last_log
-    | None -> PersistentLogEntry.empty
+    last_index t >>= fun last_index ->
+    match last_index with
+    | last_index when last_index > 0 -> (
+        match get t last_index with
+        | Ok last_log -> Ok last_log
+        | Error msg ->
+            let msg =
+              Printf.sprintf
+                "Failed to get last log. last_index:[%d], error:[%s]" last_index
+                msg
+            in
+            Logger.error t.logger msg;
+            Error msg
+      )
+    | _ -> Ok None
 
 
   let append t ~entries =
@@ -261,24 +361,43 @@ module PersistentLog = struct
       then (
         let entry = List.hd_exn entries in
         let rest_of_entries_from_param = List.tl_exn entries in
-        let target_entry = get t entry.index in
-        (* If an existing entry conflicts with a new one (same index but different terms),
-           delete the existing entry and all that follow it (§5.3) *)
-        ( match target_entry with
-        | Some existing when entry.index <> existing.index ->
-            Logger.error t.logger
-              (sprintf
-                 "Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
-                 (PersistentLogEntry.show existing)
-                 (PersistentLogEntry.show entry)
-              )
-        | Some existing when entry.term <> existing.term ->
-            set_and_truncate_suffix t entry
-        | Some _ -> ()
-        | None -> add t entry
-        );
-        loop rest_of_entries_from_param
+        let result =
+          get t entry.index >>= fun corresponding_entry ->
+          match corresponding_entry with
+          | Some existing when entry.index <> existing.index ->
+              let msg =
+                sprintf
+                  "Failed to append entries. Unexpected existing entry was found. existing_entry: %s, new_entry: %s"
+                  (PersistentLogEntry.show existing)
+                  (PersistentLogEntry.show entry)
+              in
+              Logger.error t.logger msg;
+              Error msg
+          | Some existing when entry.term <> existing.term -> (
+              match set_and_truncate_suffix t entry with
+              | Ok () -> Ok ()
+              | Error msg ->
+                  let msg =
+                    sprintf "Failed to append entries. error:[%s]" msg
+                  in
+                  Error msg
+            )
+          | Some _ -> Ok ()
+          | None -> (
+              match add t entry with
+              | Ok () -> Ok ()
+              | Error msg ->
+                  let msg =
+                    sprintf "Failed to append entries. error:[%s]" msg
+                  in
+                  Error msg
+            )
+        in
+        match result with
+        | Ok _ -> loop rest_of_entries_from_param
+        | Error msg -> Error msg
       )
+      else Ok ()
     in
     loop entries
 end
