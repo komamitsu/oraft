@@ -265,12 +265,11 @@ module PersistentLog = struct
         r :: result
       )
       ~sql:
-        "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" :order limit :limit"
-      ~values:
-        [
-          (":order", Sqlite3.Data.TEXT order);
-          (":limit", Sqlite3.Data.INT (Int64.of_int n));
-        ]
+        (sprintf
+           "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit :limit"
+           order
+        )
+      ~values:[ (":limit", Sqlite3.Data.INT (Int64.of_int n)) ]
       ~init:[]
 
 
