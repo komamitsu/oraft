@@ -8,6 +8,7 @@ type t = {
   state : leader;
   logger : Logger.t;
   step_down : unit -> unit;
+  apply_log : apply_log;
   mutable should_step_down : bool;
   inflight_requests : (int * Lwt_mutex.t) Queue.t;
   mutable threads : unit Lwt.t list option;
@@ -28,6 +29,22 @@ let return_responses t =
   let match_index_with_majority =
     List.nth_exn ordered_match_indexes (num_of_majority - 1)
   in
+  let volatile_state = t.state.common.volatile_state in
+  let persistent_log = t.state.common.persistent_log in
+  VolatileState.update_commit_index volatile_state match_index_with_majority;
+  VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+      (* TODO Improve error handling *)
+      ignore
+        ( match PersistentLog.get persistent_log i with
+        | Ok (Some log) ->
+            Ok
+              (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+                 ~log_data:log.data
+              )
+        | Ok None -> Error (sprintf "Failed to get the log. index:[%d]" i)
+        | Error _ as err -> err
+        )
+  );
   (* TODO: Optimization *)
   Queue.filter_inplace
     ~f:(fun (log_index, lock_per_req) ->
@@ -266,13 +283,14 @@ let wait_termination t =
       Lwt.return ()
 
 
-let create ~conf ~state ~logger ~step_down =
+let create ~conf ~state ~logger ~step_down ~apply_log =
   let t =
     {
       conf;
       state;
       logger;
       step_down;
+      apply_log;
       should_step_down = false;
       inflight_requests = Queue.create ();
       threads = None;
