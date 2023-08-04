@@ -1,5 +1,4 @@
 type level = TRACE | DEBUG | INFO | WARN | ERROR
-
 type t
 
 val create :
@@ -10,10 +9,7 @@ val create :
   unit ->
   t
 
-val debug : t -> string -> unit
-
-val info : t -> string -> unit
-
-val warn : t -> string -> unit
-
-val error : t -> string -> unit
+val debug : t -> loc:string -> string -> unit
+val info : t -> loc:string -> string -> unit
+val warn : t -> loc:string -> string -> unit
+val error : t -> loc:string -> string -> unit

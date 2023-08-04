@@ -45,15 +45,13 @@ let stepdown t ~election_timer =
   ()
 
 
-let error fname msg = Error (Printf.sprintf "[%s.%s] %s" __MODULE__ fname msg)
-
 let unexpected_error msg =
   Cohttp_lwt_unix.Server.respond_string ~status:`Internal_server_error ~body:msg
     ()
 
 
 let unexpected_request t =
-  Logger.error t.logger
+  Logger.error t.logger ~loc:__LOC__
     (Printf.sprintf "Unexpected request (next_mode: %s)"
        (match t.next_mode with Some x -> Base.show_mode x | None -> "-----")
     );
@@ -85,7 +83,7 @@ let request_vote t ~election_timer =
               }
         in
         Ok (Params.request_vote_request_to_yojson r)
-    | Error msg -> error __FUNCTION__ msg
+    | Error _ as err -> err
   in
   match result_request_json with
   | Ok request_json ->
@@ -109,7 +107,8 @@ let request_vote t ~election_timer =
       in
       Lwt_list.map_p request (Conf.peer_nodes t.conf)
   | Error msg ->
-      Logger.error t.logger (sprintf "request_vote failed. error:[%s]" msg);
+      Logger.error t.logger ~loc:__LOC__
+        (sprintf "request_vote failed. error:[%s]" msg);
       (* TODO: Revisit here *)
       Lwt_list.map_p Lwt.return []
 
@@ -185,7 +184,7 @@ let collect_votes t ~election_timer ~vote_request =
                | Params.REQUEST_VOTE_RESPONSE param ->
                    if param.vote_granted then a + 1 else a
                | _ ->
-                   Logger.error t.logger "Unexpected request";
+                   Logger.error t.logger ~loc:__LOC__ "Unexpected request";
                    a
              )
            | None -> a
@@ -197,7 +196,7 @@ let collect_votes t ~election_timer ~vote_request =
   if n >= majority
   then (
     (* If votes received from majority of servers: become leader *)
-    Logger.info t.logger
+    Logger.info t.logger ~loc:__LOC__
       (Printf.sprintf
          "Received majority votes (received: %d, majority: %d). Moving to Leader"
          n majority
@@ -206,7 +205,7 @@ let collect_votes t ~election_timer ~vote_request =
     t.next_mode <- Some LEADER
   )
   else
-    Logger.info t.logger
+    Logger.info t.logger ~loc:__LOC__
       (Printf.sprintf
          "Didn't receive majority votes (received: %d, majority: %d). Trying again"
          n majority
@@ -230,7 +229,7 @@ let run ~conf ~apply_log ~state () =
   PersistentState.increment_current_term persistent_state;
   PersistentState.set_voted_for persistent_state ~logger:t.logger
     ~voted_for:(Some t.conf.node_id);
-  Logger.info t.logger
+  Logger.info t.logger ~loc:__LOC__
   @@ Printf.sprintf "### Candidate: Start (term:%d) ###"
   @@ PersistentState.current_term persistent_state;
   (* Vote for self *)

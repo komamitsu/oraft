@@ -47,7 +47,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
           (min param.leader_commit last_index)
     | Error msg ->
         let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
-        Logger.error logger msg;
+        Logger.error logger ~loc:__LOC__ msg;
         error := Some (Error msg)
   );
 
@@ -56,7 +56,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
     if List.length param.entries > 0
     then (
       let first_entry = List.hd_exn param.entries in
-      Logger.debug logger
+      Logger.debug logger ~loc:__LOC__
         (sprintf
            "This param isn't empty, so appending entries(lentgh: %d, first_entry.term: %d, first_entry.index: %d)"
            (List.length param.entries)
@@ -71,7 +71,7 @@ let append_entries ~(conf : Conf.t) ~logger ~state
       | Ok () -> ()
       | Error msg ->
           let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
-          Logger.error logger msg;
+          Logger.error logger ~loc:__LOC__ msg;
           error := Some (Error msg)
     );
 
@@ -93,12 +93,12 @@ let append_entries ~(conf : Conf.t) ~logger ~state
                   "Failed to handle append_entries. error:[The target log is not found. index:[%d]]"
                   i
               in
-              Logger.error logger msg
+              Logger.error logger ~loc:__LOC__ msg
           | Error msg ->
               let msg =
                 sprintf "Failed to handle append_entries. error:[%s]" msg
               in
-              Logger.error logger msg
+              Logger.error logger ~loc:__LOC__ msg
       );
       Ok ()
   | Some error -> error
@@ -117,7 +117,7 @@ let log_error_req ~state ~logger ~msg ~(param : Params.append_entries_request) =
     then "None"
     else PersistentLogEntry.show (List.nth_exn param.entries (entries_size - 1))
   in
-  Logger.warn logger
+  Logger.warn logger ~loc:__LOC__
     (sprintf
        "%s. param:{term:%d, leader_id:%d, prev_log_term:%d, prev_log_index:%d, entries_size:%d, leader_commit:%d, first_entry:%s, last_entry:%s}, state:%s"
        msg param.term param.leader_id param.prev_log_term param.prev_log_index
@@ -180,5 +180,5 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
     )
   | Error msg ->
       let msg = sprintf "Failed to handle append_entries. error:[%s]" msg in
-      Logger.error logger msg;
+      Logger.error logger ~loc:__LOC__ msg;
       Error msg

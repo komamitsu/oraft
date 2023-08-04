@@ -67,28 +67,28 @@ let unexpected_error msg =
     ()
 
 
-let error fname msg = Error (Printf.sprintf "[%s.%s] %s" __MODULE__ fname msg)
-
 let step_down t =
-  Logger.info t.logger "Stepping down";
+  Logger.info t.logger ~loc:__LOC__ "Stepping down";
   t.should_step_down <- true;
   ( match t.append_entries_sender with
   | Some sender ->
-      Logger.info t.logger "Calling Append_entries_sender.stop";
+      Logger.info t.logger ~loc:__LOC__ "Calling Append_entries_sender.stop";
       Append_entries_sender.stop sender
-  | None -> Logger.error t.logger "Append_entries_sender isn't initalized"
+  | None ->
+      Logger.error t.logger ~loc:__LOC__
+        "Append_entries_sender isn't initalized"
   );
   match t.server_stopper with
   | Some server_stopper ->
-      Logger.info t.logger "Calling Lwt.wakeup server_stopper";
+      Logger.info t.logger ~loc:__LOC__ "Calling Lwt.wakeup server_stopper";
       Lwt.wakeup server_stopper ()
-  | None -> Logger.error t.logger "Server stopper isn't initalized"
+  | None -> Logger.error t.logger ~loc:__LOC__ "Server stopper isn't initalized"
 
 
 let append_entries t =
   if t.should_step_down
   then (
-    Logger.info t.logger
+    Logger.info t.logger ~loc:__LOC__
       "Avoiding sending append_entries since it's stepping down";
     Lwt.return (Ok false)
   )
@@ -102,7 +102,8 @@ let append_entries t =
               Append_entries_sender.wait_append_entries_response sender
                 ~log_index:last_log_index
           | None ->
-              Logger.error t.logger "Append_entries_sender isn't initalized";
+              Logger.error t.logger ~loc:__LOC__
+                "Append_entries_sender isn't initalized";
               Lwt.return ()
         in
         let volatile_state = t.state.common.volatile_state in
@@ -116,15 +117,13 @@ let append_entries t =
                     (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
                        ~log_data:log.data
                     )
-              | Ok None ->
-                  error __FUNCTION__
-                    (sprintf "failed to get the log. index:[%d]" i)
-              | Error msg -> error __FUNCTION__ msg
+              | Ok None -> Error (sprintf "Failed to get the log. index:[%d]" i)
+              | Error _ as err -> err
               )
         );
         (* TODO Fix the return value *)
         Lwt.return (Ok true)
-    | Error msg -> Lwt.return (error __FUNCTION__ msg)
+    | Error msg -> Lwt.return (Error msg)
   )
 
 
@@ -132,7 +131,7 @@ let handle_client_command t ~(param : Params.client_command_request) =
   let persistent_log = t.state.common.persistent_log in
   (* If command received from client: append entry to local log,
    * respond after entry applied to state machine (§5.3) *)
-  Logger.debug t.logger
+  Logger.debug t.logger ~loc:__LOC__
     (Printf.sprintf "Received client_command %s"
        (Params.show_client_command_request param)
     );
@@ -169,7 +168,7 @@ let handle_client_command t ~(param : Params.client_command_request) =
 
 let request_handlers t =
   let unexpected_request () =
-    Logger.error t.logger
+    Logger.error t.logger ~loc:__LOC__
       (sprintf "Unexpected request. should_step_down=%s\n"
          (string_of_bool t.should_step_down)
       );
@@ -249,7 +248,7 @@ let run ~conf ~apply_log ~state () =
     t.conf.node_id;
   PersistentState.set_voted_for t.state.common.persistent_state ~logger:t.logger
     ~voted_for:(Some t.conf.node_id);
-  Logger.info t.logger
+  Logger.info t.logger ~loc:__LOC__
   @@ Printf.sprintf "### Leader: Start (term:%d) ###"
   @@ PersistentState.current_term t.state.common.persistent_state;
   State.log_leader t.state ~logger:t.logger;

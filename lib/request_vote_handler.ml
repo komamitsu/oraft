@@ -43,7 +43,7 @@ let request_vote ~state ~logger ~cb_newer_term
           | Some last_log -> (last_log.term, last_log.index)
           | None -> (-1, -1)
         in
-        Logger.info logger
+        Logger.info logger ~loc:__LOC__
           (Printf.sprintf
              "RequestVote's log info is up-to-date? %B (param: {term: %d, index: %d}, last_log: {term: %d, index: %d})"
              up_to_date_as_receiver_log param.last_log_term param.last_log_index
@@ -72,14 +72,14 @@ let handle ~state ~logger ~cb_valid_request ~cb_newer_term
         cb_valid_request ();
         PersistentState.set_voted_for persistent_state ~logger
           ~voted_for:(Some param.candidate_id);
-        Logger.debug logger
+        Logger.debug logger ~loc:__LOC__
           (Printf.sprintf
              "Received request_vote that meets the requirement. param:%s"
              (Params.show_request_vote_request param)
           )
       )
       else
-        Logger.debug logger
+        Logger.debug logger ~loc:__LOC__
           (Printf.sprintf
              "Received request_vote, but param didn't meet the requirement. param:%s"
              (Params.show_request_vote_request param)

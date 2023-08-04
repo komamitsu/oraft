@@ -42,7 +42,10 @@ module PersistentState = struct
       ~data:(state_to_yojson state |> Yojson.Safe.to_string)
 
 
-  let log t ~logger = Logger.debug logger ("PersistentState : " ^ show t)
+  let log t ~logger =
+    Logger.debug logger ~loc:__LOC__ ("PersistentState : " ^ show t)
+
+
   let voted_for t = t.voted_for
 
   let set_voted_for t ~logger ~voted_for =
@@ -50,7 +53,7 @@ module PersistentState = struct
       | Some x -> "Some " ^ string_of_int x
       | None -> "None"
     in
-    Logger.info logger
+    Logger.info logger ~loc:__LOC__
       (sprintf "Setting voted_for from %s to %s" (to_string t.voted_for)
          (to_string voted_for)
       );
@@ -73,7 +76,7 @@ module PersistentState = struct
   let detect_same_term t ~logger ~other_term =
     if other_term = t.current_term
     then (
-      Logger.info logger
+      Logger.info logger ~loc:__LOC__
         (sprintf "Detected the same term: %d, state.term: %d. Stepping down"
            other_term t.current_term
         );
@@ -86,7 +89,7 @@ module PersistentState = struct
   let detect_newer_term t ~logger ~other_term =
     if other_term > t.current_term
     then (
-      Logger.info logger
+      Logger.info logger ~loc:__LOC__
         (sprintf "Detected newer term: %d, state.term: %d. Stepping down"
            other_term t.current_term
         );
@@ -101,7 +104,7 @@ module PersistentState = struct
   let detect_old_leader t ~logger ~other_term =
     if other_term < t.current_term
     then (
-      Logger.info logger
+      Logger.info logger ~loc:__LOC__
         (sprintf "Detected old leader's term: %d, state.term: %d" other_term
            t.current_term
         );
@@ -116,7 +119,9 @@ module PersistentLogEntry = struct
 
   let create ~index ~term ~data = { term; index; data }
   let from_string s = s
-  let log t ~logger = Logger.debug logger ("PersistentLogEntry : " ^ show t)
+
+  let log t ~logger =
+    Logger.debug logger ~loc:__LOC__ ("PersistentLogEntry : " ^ show t)
 end
 
 module PersistentLog = struct
@@ -129,7 +134,7 @@ module PersistentLog = struct
       ( match rc with
       | OK -> ()
       | _ ->
-          Logger.error logger
+          Logger.error logger ~loc:__LOC__
             (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
                sql (Sqlite3.Rc.to_string rc)
             )
@@ -143,7 +148,7 @@ module PersistentLog = struct
           Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
             (Sqlite3.Rc.to_string rc)
         in
-        Logger.error logger msg;
+        Logger.error logger ~loc:__LOC__ msg;
         Error msg
 
 
@@ -155,7 +160,7 @@ module PersistentLog = struct
       | OK -> ()
       | DONE -> ()
       | _ ->
-          Logger.error logger
+          Logger.error logger ~loc:__LOC__
             (Printf.sprintf "SQL prepare-statement failed. sql:[%s]. rc:[%s]"
                sql (Sqlite3.Rc.to_string rc)
             )
@@ -169,7 +174,7 @@ module PersistentLog = struct
           Printf.sprintf "SQL execution failed. sql:[%s]. rc:[%s]" sql
             (Sqlite3.Rc.to_string rc)
         in
-        Logger.error logger msg;
+        Logger.error logger ~loc:__LOC__ msg;
         Error msg
 
 
@@ -184,7 +189,7 @@ module PersistentLog = struct
         | Sqlite3.Data.INT x -> count + Int64.to_int_exn x
         | _ ->
             let count_str = Sqlite3.Data.to_string_debug count_result in
-            Logger.error logger
+            Logger.error logger ~loc:__LOC__
               (Printf.sprintf "Setting-up database failed. sql:[%s]. count:[%s]"
                  sql count_str
               );
@@ -211,7 +216,7 @@ module PersistentLog = struct
             "Setting-up database failed. sql:[%s], error:[Unexpected number of table: %d]"
             sql unexpected
         in
-        Logger.error logger msg;
+        Logger.error logger ~loc:__LOC__ msg;
         Error msg
 
 
@@ -222,7 +227,7 @@ module PersistentLog = struct
     | Sqlite3.Data.INT x -> Int64.to_int_exn x
     | _ as wrong_value ->
         let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
-        Logger.error t.logger
+        Logger.error t.logger ~loc:__LOC__
           (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
         0
 
@@ -232,7 +237,7 @@ module PersistentLog = struct
     | Sqlite3.Data.TEXT x -> x
     | _ as wrong_value ->
         let wrong_value_str = Sqlite3.Data.to_string_debug wrong_value in
-        Logger.error t.logger
+        Logger.error t.logger ~loc:__LOC__
           (Printf.sprintf "Unexpected type value [%s]" wrong_value_str);
         ""
 
@@ -285,7 +290,9 @@ module PersistentLog = struct
       entries
 
 
-  let log t ~logger = Logger.debug logger ("PersistentLog: " ^ show t)
+  let log t ~logger =
+    Logger.debug logger ~loc:__LOC__ ("PersistentLog: " ^ show t)
+
 
   let get t i =
     exec_sql_with_result ~db:t.db ~logger:t.logger
@@ -304,7 +311,7 @@ module PersistentLog = struct
             "Failed to get the record. index:[%d], msg:[Fetched multiple records]"
             i
         in
-        Logger.error t.logger msg;
+        Logger.error t.logger ~loc:__LOC__ msg;
         Error msg
 
 
@@ -349,7 +356,7 @@ module PersistentLog = struct
                 "Failed to get last log. last_index:[%d], error:[%s]" last_index
                 msg
             in
-            Logger.error t.logger msg;
+            Logger.error t.logger ~loc:__LOC__ msg;
             Error msg
       )
     | _ -> Ok None
@@ -371,7 +378,7 @@ module PersistentLog = struct
                   (PersistentLogEntry.show existing)
                   (PersistentLogEntry.show entry)
               in
-              Logger.error t.logger msg;
+              Logger.error t.logger ~loc:__LOC__ msg;
               Error msg
           | Some existing when entry.term <> existing.term -> (
               match set_and_truncate_suffix t entry with
@@ -422,7 +429,10 @@ module VolatileState = struct
     { commit_index = 0; last_applied = 0; mode = FOLLOWER; leader_id = None }
 
 
-  let log t ~logger = Logger.debug logger ("VolatileState: " ^ show t)
+  let log t ~logger =
+    Logger.debug logger ~loc:__LOC__ ("VolatileState: " ^ show t)
+
+
   let update_commit_index t i = t.commit_index <- i
   let update_last_applied t i = t.last_applied <- i
   let commit_index t = t.commit_index
@@ -430,7 +440,7 @@ module VolatileState = struct
   let detect_higher_commit_index t ~logger ~other =
     if other > t.commit_index
     then (
-      Logger.debug logger
+      Logger.debug logger ~loc:__LOC__
         (sprintf "Leader commit(%d) is higher than state.term(%d)" other
            t.commit_index
         );
@@ -446,7 +456,7 @@ module VolatileState = struct
       if t.last_applied < t.commit_index
       then (
         let i = t.last_applied + 1 in
-        Logger.debug logger
+        Logger.debug logger ~loc:__LOC__
           (sprintf "Applying %dth entry. state.volatile_state.commit_index: %d"
              i (commit_index t)
           );
@@ -462,7 +472,8 @@ module VolatileState = struct
 
   let update_mode t ~logger mode =
     t.mode <- mode;
-    Logger.info logger (sprintf "Mode is changed to %s" (Base.show_mode mode))
+    Logger.info logger ~loc:__LOC__
+      (sprintf "Mode is changed to %s" (Base.show_mode mode))
 
 
   let leader_id t = t.leader_id
@@ -472,12 +483,13 @@ module VolatileState = struct
     | Some x when x = leader_id -> ()
     | _ ->
         t.leader_id <- Some leader_id;
-        Logger.info logger (sprintf "Leader ID is changed to %d" leader_id)
+        Logger.info logger ~loc:__LOC__
+          (sprintf "Leader ID is changed to %d" leader_id)
 
 
   let reset_leader_id t ~logger =
     t.leader_id <- None;
-    Logger.info logger (sprintf "Leader ID is reset")
+    Logger.info logger ~loc:__LOC__ (sprintf "Leader ID is reset")
 end
 
 (* Volatile state on leaders:
@@ -501,7 +513,10 @@ module VolatileStateOnLeader = struct
     )
 
 
-  let log t ~logger = Logger.debug logger ("VolatileStateOnLeader: " ^ show t)
+  let log t ~logger =
+    Logger.debug logger ~loc:__LOC__ ("VolatileStateOnLeader: " ^ show t)
+
+
   let get t i = List.nth_exn t i
   let set_next_index t i x = (List.nth_exn t i).next_index <- x
 
@@ -509,7 +524,7 @@ module VolatileStateOnLeader = struct
     let peer = List.nth_exn t i in
     if peer.match_index > x
     then
-      Logger.warn logger
+      Logger.warn logger ~loc:__LOC__
         (sprintf
            "matchIndex should monotonically increase within a term, since servers don't forget entries. But it didn't. match_index: old=%d, new=%d"
            peer.match_index x
