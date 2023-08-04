@@ -6,13 +6,13 @@ let handle_response ~logger ~converter ~node ~resp ~body =
   let status_code = resp |> Response.status |> Cohttp.Code.code_of_status in
   if status_code / 100 = 2
   then (
-    Logger.debug logger
+    Logger.debug logger ~loc:__LOC__
       (Printf.sprintf "Received response from node: %d, body: %s" node.id body);
     let json = Yojson.Safe.from_string body in
     match converter json with
     | Ok param -> Some param
     | Error err ->
-        Logger.error logger
+        Logger.error logger ~loc:__LOC__
           (Printf.sprintf
              "Received an error response from node %d. err: %s, body: %s"
              node.id err body
@@ -20,7 +20,7 @@ let handle_response ~logger ~converter ~node ~resp ~body =
         None
   )
   else (
-    Logger.error logger
+    Logger.error logger ~loc:__LOC__
     @@ Printf.sprintf "Received an error status code from node %d : %d" node.id
          status_code;
     None
@@ -38,7 +38,7 @@ let post ~logger ~url_path ~request_json ~timeout_millis
   in
   let timeout : Params.response option Lwt.t =
     let%lwt _ = Lwt_unix.sleep (float_of_int timeout_millis /. 1000.0) in
-    Logger.warn logger
+    Logger.warn logger ~loc:__LOC__
       (Printf.sprintf "Request timeout. node_id: %d, url_path: %s" node.id
          url_path
       );
@@ -56,7 +56,7 @@ let post ~logger ~url_path ~request_json ~timeout_millis
         try handle_response ~logger ~converter ~node ~resp ~body
         with e ->
           let msg = Stdlib.Printexc.to_string e in
-          Logger.error logger
+          Logger.error logger ~loc:__LOC__
             (Printf.sprintf
                "Failed to handle response body. node_id: %d, error: %s" node.id
                msg
@@ -69,7 +69,7 @@ let post ~logger ~url_path ~request_json ~timeout_millis
     (fun () -> Lwt.pick [ send_req node; timeout ])
     (fun e ->
       let msg = Stdlib.Printexc.to_string e in
-      Logger.error logger
+      Logger.error logger ~loc:__LOC__
         (Printf.sprintf "Failed to send a request. node_id: %d, error: %s"
            node.id msg
         );

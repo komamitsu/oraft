@@ -14,7 +14,7 @@ let create ~port ~logger ~(table : (key, converter * processor) Stdlib.Hashtbl.t
     let path = req |> Request.uri |> Uri.path in
     let headers = req |> Request.headers in
     let node_id = Cohttp.Header.get headers "X-Raft-Node-Id" in
-    Logger.debug logger
+    Logger.debug logger ~loc:__LOC__
       (Printf.sprintf "Received: %s %s from %s"
          (Cohttp.Code.string_of_method meth)
          path
@@ -30,11 +30,12 @@ let create ~port ~logger ~(table : (key, converter * processor) Stdlib.Hashtbl.t
         match converter json with
         | Ok param -> processor param
         | Error err ->
-            Logger.warn logger (Printf.sprintf "Invalid request: %s" err);
+            Logger.warn logger ~loc:__LOC__
+              (Printf.sprintf "Invalid request: %s" err);
             Server.respond_string ~status:`Bad_request ~body:"" ()
       )
     | None ->
-        Logger.debug logger
+        Logger.debug logger ~loc:__LOC__
           (Printf.sprintf "Unknown request: %s %s"
              (Cohttp.Code.string_of_method meth)
              path

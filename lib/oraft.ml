@@ -60,13 +60,13 @@ let post_command ~(conf : Conf.t) ~logger ~state s =
   | Some node_id ->
       let current_leader_node = Conf.peer_node conf ~node_id in
       let%lwt result = request current_leader_node in
-      Logger.debug logger
+      Logger.debug logger ~loc:__LOC__
         (Printf.sprintf "Sending command to node(%d) : %s" node_id s);
       Lwt.return
         ( match result with
         | Some (Params.CLIENT_COMMAND_RESPONSE x) -> x.success
         | Some _ ->
-            Logger.error logger "Shouldn't reach here";
+            Logger.error logger ~loc:__LOC__ "Shouldn't reach here";
             false
         | None -> false
         )
@@ -81,7 +81,7 @@ let start ~conf_file ~apply_log =
   in
   match state ~conf ~logger with
   | Ok state ->
-      Logger.info logger "Starting Oraft";
+      Logger.info logger ~loc:__LOC__ "Starting Oraft";
       let post_command = post_command ~conf ~logger ~state in
       let initial_state_exec = Follower.run ~conf ~apply_log ~state in
       Ok
@@ -107,5 +107,5 @@ let start ~conf_file ~apply_log =
         }
   | Error msg ->
       let msg = sprintf "Failed to prepare state. error:[%s]" msg in
-      Logger.error logger msg;
+      Logger.error ~loc:__LOC__ logger msg;
       Error msg

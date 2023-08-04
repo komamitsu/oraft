@@ -39,7 +39,7 @@ let create ~node_id ?mode ?output_path ~level () =
   { node_id; mode; output_path; level = level_of_string level }
 
 
-let write t ~level ~msg =
+let write t ~level ~loc ~msg =
   let mode =
     match t.mode with Some x -> Base.show_mode x | None -> "--------"
   in
@@ -51,8 +51,8 @@ let write t ~level ~msg =
     in
     let msg = Str.(global_replace (regexp "\n") "" msg) in
     let s =
-      Printf.sprintf "%s %s [%d:%s] - %s\n" now (string_of_level level)
-        t.node_id mode msg
+      Printf.sprintf "%s %s [%d:%s] - (%s) %s\n" now (string_of_level level)
+        t.node_id mode loc msg
     in
     match t.output_path with
     | Some output_path ->
@@ -63,7 +63,7 @@ let write t ~level ~msg =
   )
 
 
-let debug t msg = write t ~level:DEBUG ~msg
-let info t msg = write t ~level:INFO ~msg
-let warn t msg = write t ~level:WARN ~msg
-let error t msg = write t ~level:ERROR ~msg
+let debug t ~loc msg = write t ~level:DEBUG ~loc ~msg
+let info t ~loc msg = write t ~level:INFO ~loc ~msg
+let warn t ~loc msg = write t ~level:WARN ~loc ~msg
+let error t ~loc msg = write t ~level:ERROR ~loc ~msg

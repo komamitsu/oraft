@@ -47,7 +47,7 @@ let send_request_and_update_peer_info t ~node_index ~node ~request_json ~entries
     ~prev_log_index =
   let persistent_state = t.state.common.persistent_state in
   let leader_state = t.state.volatile_state_on_leader in
-  Logger.debug t.logger
+  Logger.debug t.logger ~loc:__LOC__
     (Printf.sprintf "Sending append_entries(node_id:%d): %s" node.id
        (Yojson.Safe.to_string request_json)
     );
@@ -123,7 +123,7 @@ let prepare_entries t ~node_index ~node =
                         "Can't find the log(node_id:%d): i:%d, prev_log_index:%d"
                         node.id i prev_log_index
                     in
-                    Logger.error t.logger msg;
+                    Logger.error t.logger ~loc:__LOC__ msg;
                     None
                 | Error msg ->
                     (* FIXME *)
@@ -132,7 +132,7 @@ let prepare_entries t ~node_index ~node =
                         "Unexpected error occurred (node_id:%d): i:[%d], prev_log_index:[%d], error:[%s]"
                         node.id i prev_log_index msg
                     in
-                    Logger.error t.logger msg;
+                    Logger.error t.logger ~loc:__LOC__ msg;
                     None
             )
           in
@@ -151,7 +151,7 @@ let request_append_entry t ~node_index ~node =
   let volatile_state = t.state.common.volatile_state in
   let leader_state = t.state.volatile_state_on_leader in
   let current_term = PersistentState.current_term persistent_state in
-  Logger.debug t.logger
+  Logger.debug t.logger ~loc:__LOC__
     (Printf.sprintf "Peer[node_id:%d]: %s" node.id
        (VolatileStateOnLeader.show_nth_peer leader_state node_index)
     );
@@ -200,7 +200,7 @@ let append_entries_thread t ~node_index ~node =
         (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
         if t.should_step_down
         then (
-          Logger.info t.logger
+          Logger.info t.logger ~loc:__LOC__
             (sprintf
                "Avoiding sending append_entries since it's stepping down(node_id:%d)"
                node.id
@@ -213,7 +213,7 @@ let append_entries_thread t ~node_index ~node =
               let%lwt _ = result in
               Lwt.return_unit
           | Error msg ->
-              Logger.error t.logger
+              Logger.error t.logger ~loc:__LOC__
                 (sprintf
                    "Unexpected error occurred in %s (node_id:%d). error:[%s]"
                    __FUNCTION__ node.id msg
@@ -237,7 +237,7 @@ let append_entries_thread t ~node_index ~node =
           in
           loop ()
       | Error msg ->
-          Logger.error t.logger msg;
+          Logger.error t.logger ~loc:__LOC__ msg;
           let%lwt _ = Lwt_unix.sleep interval_in_seconds in
           loop ()
     )
@@ -246,7 +246,7 @@ let append_entries_thread t ~node_index ~node =
 
 
 let stop t =
-  Logger.info t.logger "Stopping Append_entries_sender";
+  Logger.info t.logger ~loc:__LOC__ "Stopping Append_entries_sender";
   t.should_step_down <- true
 
 
@@ -262,7 +262,7 @@ let wait_termination t =
   match t.threads with
   | Some threads -> Lwt.join threads
   | None ->
-      Logger.warn t.logger "Any threads aren't initialized";
+      Logger.warn t.logger ~loc:__LOC__ "Any threads aren't initialized";
       Lwt.return ()
 
 

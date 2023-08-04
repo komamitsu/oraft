@@ -19,7 +19,7 @@ let start t ~on_stop =
   let rec check_election_timeout () =
     if is_timed_out t || t.should_stop
     then (
-      Logger.debug t.logger "Election_timer timed out";
+      Logger.debug t.logger ~loc:__LOC__ "Election_timer timed out";
       Lwt.return (on_stop ())
     )
     else (
