@@ -5,6 +5,7 @@ val create :
   state:State.leader ->
   logger:Logger.t ->
   step_down:(unit -> unit) ->
+  apply_log:Base.apply_log ->
   t
 
 val stop : t -> unit

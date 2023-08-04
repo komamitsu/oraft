@@ -106,21 +106,6 @@ let append_entries t =
                 "Append_entries_sender isn't initalized";
               Lwt.return ()
         in
-        let volatile_state = t.state.common.volatile_state in
-        VolatileState.update_commit_index volatile_state last_log_index;
-        VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-            (* TODO Improve error handling *)
-            ignore
-              ( match PersistentLog.get persistent_log i with
-              | Ok (Some log) ->
-                  Ok
-                    (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
-                       ~log_data:log.data
-                    )
-              | Ok None -> Error (sprintf "Failed to get the log. index:[%d]" i)
-              | Error _ as err -> err
-              )
-        );
         (* TODO Fix the return value *)
         Lwt.return (Ok true)
     | Error msg -> Lwt.return (Error msg)
@@ -268,8 +253,8 @@ let run ~conf ~apply_log ~state () =
       need to be shared with Append_entries_sender.
     *)
     Append_entries_sender.create ~conf:t.conf ~state:t.state ~logger:t.logger
-      ~step_down:(fun () -> step_down t
-    )
+      ~step_down:(fun () -> step_down t)
+      ~apply_log:t.apply_log
   in
   t.append_entries_sender <- Some append_entries_sender;
   let%lwt _ =
