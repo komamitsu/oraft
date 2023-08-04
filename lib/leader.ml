@@ -105,20 +105,23 @@ let append_entries t =
               Logger.error t.logger "Append_entries_sender isn't initalized";
               Lwt.return ()
         in
-        (* TODO Revisite this comment out. The same things are done in AppendEntriesHandler
-           VolatileState.update_commit_index volatile_state last_log_index;
-           VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-               (* TODO Improve error handling *)
-               ignore (
-                 match PersistentLog.get persistent_log i with
-                 | Ok (Some log) ->
-                     Ok (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index ~log_data:log.data)
-                 | Ok None -> error __FUNCTION__ (sprintf "failed to get the log. index:[%d]" i)
-                 | Error msg -> error __FUNCTION__ msg
-               )
-             )
-           ;
-        *)
+        let volatile_state = t.state.common.volatile_state in
+        VolatileState.update_commit_index volatile_state last_log_index;
+        VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
+            (* TODO Improve error handling *)
+            ignore
+              ( match PersistentLog.get persistent_log i with
+              | Ok (Some log) ->
+                  Ok
+                    (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+                       ~log_data:log.data
+                    )
+              | Ok None ->
+                  error __FUNCTION__
+                    (sprintf "failed to get the log. index:[%d]" i)
+              | Error msg -> error __FUNCTION__ msg
+              )
+        );
         (* TODO Fix the return value *)
         Lwt.return (Ok true)
     | Error msg -> Lwt.return (error __FUNCTION__ msg)
