@@ -3,7 +3,7 @@ let main ~conf_file =
     Oraft.start ~conf_file ~apply_log:(fun ~node_id ~log_index ~log_data ->
         Printf.printf "[node_id:%d, log_index:%d] %s\n" node_id log_index
           log_data;
-        flush stdout
+        Ok (flush stdout)
     )
   in
   match result with

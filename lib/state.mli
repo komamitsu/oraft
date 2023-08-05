@@ -53,7 +53,12 @@ module VolatileState : sig
   val commit_index : t -> int
   val detect_higher_commit_index : t -> logger:Logger.t -> other:int -> bool
   val last_applied : t -> int
-  val apply_logs : t -> logger:Logger.t -> f:(int -> unit) -> unit
+
+  val apply_logs :
+    t ->
+    logger:Logger.t ->
+    f:(int -> (unit, string) result) ->
+    (unit, string) result
 
   val mode : t -> Base.mode
   (** These are customized functions that aren't shown in the paper *)
