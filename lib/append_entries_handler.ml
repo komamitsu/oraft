@@ -22,7 +22,6 @@ open Printf
 let append_entries ~(conf : Conf.t) ~logger ~state
     ~(param : Params.append_entries_request) ~(apply_log : Base.apply_log)
     ~cb_newer_term ~handle_same_term_as_newer =
-  (* TODO: Revisit whether it's okay to update leader_id w/o any check *)
   VolatileState.update_leader_id state.volatile_state ~logger param.leader_id;
   let persistent_log = state.persistent_log in
   let volatile_state = state.volatile_state in
@@ -82,7 +81,6 @@ let append_entries ~(conf : Conf.t) ~logger ~state
   match !error with
   | None ->
       VolatileState.apply_logs volatile_state ~logger ~f:(fun i ->
-          (* TODO Improve error handling *)
           match PersistentLog.get persistent_log i with
           | Ok (Some log) ->
               apply_log ~node_id:conf.node_id ~log_index:log.index
@@ -93,14 +91,15 @@ let append_entries ~(conf : Conf.t) ~logger ~state
                   "Failed to handle append_entries. error:[The target log is not found. index:[%d]]"
                   i
               in
-              Logger.error logger ~loc:__LOC__ msg
+              Logger.error logger ~loc:__LOC__ msg;
+              Error msg
           | Error msg ->
               let msg =
                 sprintf "Failed to handle append_entries. error:[%s]" msg
               in
-              Logger.error logger ~loc:__LOC__ msg
-      );
-      Ok ()
+              Logger.error logger ~loc:__LOC__ msg;
+              Error msg
+      )
   | Some error -> error
 
 

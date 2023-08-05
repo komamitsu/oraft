@@ -1,4 +1,5 @@
 open Cohttp_lwt_unix
+open Printf
 
 let kvs = Hashtbl.create 64
 let ids = Hashtbl.create 4096
@@ -75,9 +76,9 @@ let oraft conf_file =
         );
         let id, cmd, args = parse_command log_data in
         match cmd with
-        | "SET" -> kvs_set id args
-        | "INCR" -> kvs_incr id args
-        | _ -> ()
+        | "SET" -> Ok (kvs_set id args)
+        | "INCR" -> Ok (kvs_incr id args)
+        | _ -> Error (sprintf "Unknown command: %s" cmd)
     )
   in
   match result with Ok oraft -> oraft | Error msg -> failwith msg

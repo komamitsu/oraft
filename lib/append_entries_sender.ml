@@ -2,6 +2,7 @@ open Base
 open Core
 open State
 open Printf
+open Result
 
 type t = {
   conf : Conf.t;
@@ -33,31 +34,29 @@ let return_responses t =
   let persistent_log = t.state.common.persistent_log in
   VolatileState.update_commit_index volatile_state match_index_with_majority;
   VolatileState.apply_logs volatile_state ~logger:t.logger ~f:(fun i ->
-      (* TODO Improve error handling *)
-      ignore
-        ( match PersistentLog.get persistent_log i with
-        | Ok (Some log) ->
-            Ok
-              (t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
-                 ~log_data:log.data
-              )
-        | Ok None -> Error (sprintf "Failed to get the log. index:[%d]" i)
-        | Error _ as err -> err
-        )
-  );
+      match PersistentLog.get persistent_log i with
+      | Ok (Some log) ->
+          t.apply_log ~node_id:t.conf.node_id ~log_index:log.index
+            ~log_data:log.data
+      | Ok None -> Error (sprintf "Failed to get the log. index:[%d]" i)
+      | Error _ as err -> err
+  )
+  >>= fun () ->
   (* TODO: Optimization *)
-  Queue.filter_inplace
-    ~f:(fun (log_index, lock_per_req) ->
-      if match_index_with_majority < log_index
-      then (* keep *)
-        true
-      else (
-        Lwt_mutex.unlock lock_per_req;
-        (* release *)
-        false
-      )
+  Ok
+    (Queue.filter_inplace
+       ~f:(fun (log_index, lock_per_req) ->
+         if match_index_with_majority < log_index
+         then (* keep *)
+           true
+         else (
+           Lwt_mutex.unlock lock_per_req;
+           (* release *)
+           false
+         )
+       )
+       t.inflight_requests
     )
-    t.inflight_requests
 
 
 let send_request_and_update_peer_info t ~node_index ~node ~request_json ~entries
@@ -90,8 +89,7 @@ let send_request_and_update_peer_info t ~node_index ~node ~request_json ~entries
             in
 
             (* Check inflight requests and return responses *)
-            return_responses t;
-
+            return_responses t >>= fun () ->
             VolatileStateOnLeader.set_next_index leader_state node_index
               (match_index + 1);
             (* All Servers:
