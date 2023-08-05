@@ -180,7 +180,7 @@ module PersistentLog = struct
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    let sql = "select count() from sqlite_schema where name = :table_name" in
+    let sql = "select count(1) from sqlite_schema where name = :table_name" in
     exec_sql_with_result ~db ~logger
       ~cb:(fun count row ->
         let count_result = Array.get row 0 in
@@ -242,8 +242,11 @@ module PersistentLog = struct
         ""
 
 
+  let sql_select_from_oraft_log () =
+    "select \"index\", \"term\", \"data\" from oraft_log"
+
+
   let log_from_row t ~row =
-    (* FIXME: This depends on the order of the SELECT statement *)
     let index = fetch_int_from_row t ~row ~col_index:0 in
     let term = fetch_int_from_row t ~row ~col_index:1 in
     let data = fetch_string_from_row t ~row ~col_index:2 in
@@ -270,8 +273,8 @@ module PersistentLog = struct
         r :: result
       )
       ~sql:
-        (sprintf
-           "select \"index\", \"term\", \"data\" from oraft_log order by \"index\" %s limit :limit"
+        (sprintf "%s order by \"index\" %s limit :limit"
+           (sql_select_from_oraft_log ())
            order
         )
       ~values:[ (":limit", Sqlite3.Data.INT (Int64.of_int n)) ]
@@ -297,8 +300,7 @@ module PersistentLog = struct
   let get t i =
     exec_sql_with_result ~db:t.db ~logger:t.logger
       ~cb:(fun a row -> log_from_row t ~row :: a)
-      ~sql:
-        "select \"index\", \"term\", \"data\" from oraft_log where \"index\" = :index"
+      ~sql:(sprintf "%s where \"index\" = :index" (sql_select_from_oraft_log ()))
       ~values:[ (":index", Sqlite3.Data.INT (Int64.of_int i)) ]
       ~init:[]
     >>= fun rows ->
