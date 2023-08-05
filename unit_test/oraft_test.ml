@@ -15,7 +15,6 @@ let expect_ok f =
 let expect_some f = match f with Some x -> x | None -> assert_failure "None"
 
 let test_persistent_log_append _ =
-  (* FIXME: output_path *)
   let logger = Oraft__Logger.create ~node_id:42 ~level:"INFO" () in
   let with_tmpdir f =
     let rand = Printf.sprintf "%010d" @@ Random.int 10000000 in
@@ -28,7 +27,7 @@ let test_persistent_log_append _ =
   with_tmpdir (fun tmpdir ->
       (* Initial *)
       match PersistentLog.load ~state_dir:tmpdir ~logger with
-      | Ok log ->
+      | Ok log -> (
           assert_result None (PersistentLog.get log 1);
           assert_result 0 (PersistentLog.last_index log);
           assert_result None (PersistentLog.last_log log);
@@ -186,11 +185,13 @@ let test_persistent_log_append _ =
             assert_equal 5 last_log.term;
             assert_equal 4 last_log.index
           in
-          assert_all log
+          assert_all log;
+
           (* Load the state *)
-          (* FIXME *)
-          (* let log = PersistentLog.load ~state_dir:tmpdir ~logger in *)
-          (* assert_all log *)
+          match PersistentLog.load ~state_dir:tmpdir ~logger with
+          | Ok log -> assert_all log
+          | Error msg -> assert_failure msg
+        )
       | Error msg -> assert_failure msg
   )
 
