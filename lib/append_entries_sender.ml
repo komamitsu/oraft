@@ -129,11 +129,11 @@ let prepare_entries t ~node_index ~node =
           let prev_log_term =
             match opt_log with Some log -> log.term | None -> -1
           in
-          let entries =
+          let result_entries =
             List.init (last_log_index - prev_log_index) ~f:(fun i ->
                 let idx = i + prev_log_index + 1 in
                 match PersistentLog.get persistent_log idx with
-                | Ok (Some x) -> Some x
+                | Ok (Some log) -> Ok log
                 | Ok None ->
                     let msg =
                       sprintf
@@ -141,26 +141,28 @@ let prepare_entries t ~node_index ~node =
                         node.id i prev_log_index
                     in
                     Logger.error t.logger ~loc:__LOC__ msg;
-                    None
-                | Error msg ->
-                    (* FIXME *)
-                    let msg =
-                      sprintf
-                        "Unexpected error occurred (node_id:%d): i:[%d], prev_log_index:[%d], error:[%s]"
-                        node.id i prev_log_index msg
-                    in
-                    Logger.error t.logger ~loc:__LOC__ msg;
-                    None
+                    Error msg
+                | Error _ as err -> err
             )
           in
-          Ok
-            ( prev_log_index,
-              prev_log_term,
-              List.filter_map ~f:(fun x -> x) entries
+          let error_messages =
+            List.filter_map result_entries ~f:(fun x ->
+                match x with Ok _ -> None | Error msg -> Some msg
             )
-      | Error msg -> Error msg
+          in
+          if List.is_empty error_messages
+          then
+            Ok
+              ( prev_log_index,
+                prev_log_term,
+                List.filter_map
+                  ~f:(fun x -> match x with Ok x -> Some x | Error _ -> None)
+                  result_entries
+              )
+          else Error (List.hd_exn error_messages)
+      | Error _ as err -> err
     )
-  | Error msg -> Error msg
+  | Error _ as err -> err
 
 
 let request_append_entry t ~node_index ~node =
