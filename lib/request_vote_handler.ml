@@ -41,7 +41,7 @@ let request_vote ~state ~logger ~cb_newer_term
         let last_log_term, last_log_index =
           match opt_last_log with
           | Some last_log -> (last_log.term, last_log.index)
-          | None -> (-1, -1)
+          | None -> (initial_term, initail_log_index)
         in
         Logger.info logger ~loc:__LOC__
           (Printf.sprintf

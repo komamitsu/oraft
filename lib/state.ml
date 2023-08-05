@@ -2,6 +2,9 @@ open Core
 open Printf
 open Result
 
+let initial_term = 0
+let initail_log_index = 0
+
 (* Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
 module PersistentState = struct
@@ -31,9 +34,9 @@ module PersistentState = struct
               current_term = state.current_term;
               voted_for = state.voted_for;
             }
-        | Error _ -> { path; current_term = 0; voted_for = None }
+        | Error _ -> { path; current_term = initial_term; voted_for = None }
       )
-    | _ -> { path; current_term = 0; voted_for = None }
+    | _ -> { path; current_term = initial_term; voted_for = None }
 
 
   let save t =
@@ -288,9 +291,11 @@ module PersistentLog = struct
       | Error msg ->
           Printf.sprintf "Failed to fetch last entries. error:[%s]" msg
     in
-    let last_index = match last_index t with Ok x -> x | Error _ -> -1 in
-    sprintf "{PersistentLog.last_index = %d; last_entries = [%s]}" last_index
-      entries
+    let last_index_str =
+      match last_index t with Ok x -> string_of_int x | Error _ -> "???"
+    in
+    sprintf "{PersistentLog.last_index = %s; last_entries = [%s]}"
+      last_index_str entries
 
 
   let log t ~logger =
@@ -428,7 +433,12 @@ module VolatileState = struct
   [@@deriving show]
 
   let create () =
-    { commit_index = 0; last_applied = 0; mode = FOLLOWER; leader_id = None }
+    {
+      commit_index = initail_log_index;
+      last_applied = initail_log_index;
+      mode = FOLLOWER;
+      leader_id = None;
+    }
 
 
   let log t ~logger =
@@ -515,7 +525,7 @@ module VolatileStateOnLeader = struct
 
   let create ~n ~last_log_index =
     List.init n ~f:(fun _ ->
-        { next_index = last_log_index + 1; match_index = 0 }
+        { next_index = last_log_index + 1; match_index = initail_log_index }
     )
 
 

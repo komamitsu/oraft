@@ -42,7 +42,6 @@ let return_responses t =
       | Error _ as err -> err
   )
   >>= fun () ->
-  (* TODO: Optimization *)
   Ok
     (Queue.filter_inplace
        ~f:(fun (log_index, lock_per_req) ->
@@ -125,7 +124,7 @@ let prepare_entries t ~node_index ~node =
       match PersistentLog.get persistent_log prev_log_index with
       | Ok opt_log ->
           let prev_log_term =
-            match opt_log with Some log -> log.term | None -> -1
+            match opt_log with Some log -> log.term | None -> initial_term
           in
           let result_entries =
             List.init (last_log_index - prev_log_index) ~f:(fun i ->
@@ -214,7 +213,6 @@ let append_entries_thread t ~node_index ~node =
     else (
       let%lwt _ =
         State.log_leader t.state ~logger:t.logger;
-        (* TODO: Consider to wrap all the accesses to should_step_down with the lock *)
         if t.should_step_down
         then (
           Logger.info t.logger ~loc:__LOC__

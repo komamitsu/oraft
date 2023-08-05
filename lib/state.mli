@@ -1,3 +1,6 @@
+val initial_term : int
+val initail_log_index : int
+
 (** Persistent state on all servers:
     (Updated on stable storage before responding to RPCs) *)
 module PersistentState : sig

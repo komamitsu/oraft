@@ -38,9 +38,12 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
+  (* TODO : Merge init and run *)
   (* TODO : Return Result type*)
   let result = PersistentLog.last_index state.persistent_log in
-  let last_log_index = match result with Ok x -> x | Error _ -> -1 in
+  let last_log_index =
+    match result with Ok x -> x | Error _ -> initail_log_index
+  in
   {
     conf;
     logger =
@@ -95,19 +98,19 @@ let append_entries t =
   else (
     let persistent_log = t.state.common.persistent_log in
     match PersistentLog.last_index persistent_log with
-    | Ok last_log_index ->
-        let%lwt _ =
-          match t.append_entries_sender with
-          | Some sender ->
+    | Ok last_log_index -> (
+        match t.append_entries_sender with
+        | Some sender ->
+            let%lwt () =
               Append_entries_sender.wait_append_entries_response sender
                 ~log_index:last_log_index
-          | None ->
-              Logger.error t.logger ~loc:__LOC__
-                "Append_entries_sender isn't initalized";
-              Lwt.return ()
-        in
-        (* TODO Fix the return value *)
-        Lwt.return (Ok true)
+            in
+            Lwt.return (Ok true)
+        | None ->
+            let msg = "Append_entries_sender isn't initalized" in
+            Logger.error t.logger ~loc:__LOC__ msg;
+            Lwt.return (Error msg)
+      )
     | Error msg -> Lwt.return (Error msg)
   )
 
