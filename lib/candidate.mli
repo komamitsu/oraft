@@ -5,4 +5,4 @@ val run :
   apply_log:Base.apply_log ->
   state:State.common ->
   unit ->
-  Base.mode Lwt.t
+  (Base.mode Lwt.t, string) result

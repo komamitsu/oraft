@@ -1,6 +1,7 @@
 open Core
 open Base
 open State
+open Result
 
 (** Followers (§5.2):
   * - Respond to RPCs from candidates and leaders
@@ -21,15 +22,16 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
-  {
-    conf;
-    logger =
-      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level ();
-    apply_log;
-    state;
-    lock = Lwt_mutex.create ();
-  }
+  Ok
+    {
+      conf;
+      logger =
+        Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+          ~level:conf.log_level ();
+      apply_log;
+      state;
+      lock = Lwt_mutex.create ();
+    }
 
 
 let unexpected_error msg =
@@ -100,7 +102,7 @@ let request_handlers t ~election_timer =
 
 
 let run ~conf ~apply_log ~state () =
-  let t = init ~conf ~apply_log ~state in
+  init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   PersistentState.set_voted_for t.state.persistent_state ~logger:t.logger
     ~voted_for:None;
@@ -120,5 +122,6 @@ let run ~conf ~apply_log ~state () =
     Timer.start election_timer ~on_stop:(fun () -> Lwt.wakeup server_stopper ())
   in
   Logger.debug t.logger ~loc:__LOC__ "Starting";
-  let%lwt _ = Lwt.join [ election_timer_thread; server ] in
-  Lwt.return CANDIDATE
+  let next () = Lwt.return CANDIDATE in
+  let all = Lwt.join [ election_timer_thread; server ] in
+  Ok (Lwt.bind all next)
