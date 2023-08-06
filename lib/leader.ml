@@ -2,6 +2,7 @@ open Core
 open Base
 open State
 open Printf
+open Result
 
 (* Leaders:
  * - Upon election: send initial empty AppendEntries RPCs
@@ -38,31 +39,27 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
-  (* TODO : Merge init and run *)
-  (* TODO : Return Result type*)
-  let result = PersistentLog.last_index state.persistent_log in
-  let last_log_index =
-    match result with Ok x -> x | Error _ -> initail_log_index
-  in
-  {
-    conf;
-    logger =
-      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level ();
-    apply_log;
-    state =
-      {
-        common = state;
-        volatile_state_on_leader =
-          VolatileStateOnLeader.create
-            ~n:(List.length (Conf.peer_nodes conf))
-            ~last_log_index;
-      };
-    lock = Lwt_mutex.create ();
-    should_step_down = false;
-    server_stopper = None;
-    append_entries_sender = None;
-  }
+  PersistentLog.last_index state.persistent_log >>= fun last_log_index ->
+  Ok
+    {
+      conf;
+      logger =
+        Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+          ~level:conf.log_level ();
+      apply_log;
+      state =
+        {
+          common = state;
+          volatile_state_on_leader =
+            VolatileStateOnLeader.create
+              ~n:(List.length (Conf.peer_nodes conf))
+              ~last_log_index;
+        };
+      lock = Lwt_mutex.create ();
+      should_step_down = false;
+      server_stopper = None;
+      append_entries_sender = None;
+    }
 
 
 let unexpected_error msg =
@@ -231,7 +228,7 @@ let request_handlers t =
 
 
 let run ~conf ~apply_log ~state () =
-  let t = init ~conf ~apply_log ~state in
+  init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.update_leader_id t.state.common.volatile_state ~logger:t.logger
     t.conf.node_id;
   PersistentState.set_voted_for t.state.common.persistent_state ~logger:t.logger
@@ -260,8 +257,9 @@ let run ~conf ~apply_log ~state () =
       ~apply_log:t.apply_log
   in
   t.append_entries_sender <- Some append_entries_sender;
-  let%lwt _ =
+  let next () = Lwt.return FOLLOWER in
+  let all =
     Lwt.join
       [ server; Append_entries_sender.wait_termination append_entries_sender ]
   in
-  Lwt.return FOLLOWER
+  Ok (Lwt.bind all next)

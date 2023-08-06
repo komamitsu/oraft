@@ -27,16 +27,17 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
-  {
-    conf;
-    logger =
-      Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
-        ~level:conf.log_level ();
-    apply_log;
-    state;
-    lock = Lwt_mutex.create ();
-    next_mode = None;
-  }
+  Ok
+    {
+      conf;
+      logger =
+        Logger.create ~node_id:conf.node_id ~mode ~output_path:conf.log_file
+          ~level:conf.log_level ();
+      apply_log;
+      state;
+      lock = Lwt_mutex.create ();
+      next_mode = None;
+    }
 
 
 let stepdown t ~election_timer =
@@ -221,7 +222,7 @@ let next_mode t =
 
 
 let run ~conf ~apply_log ~state () =
-  let t = init ~conf ~apply_log ~state in
+  init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   let persistent_state = t.state.persistent_state in
   (* Increment currentTerm *)
@@ -254,5 +255,6 @@ let run ~conf ~apply_log ~state () =
         Lwt.cancel vote_request
     )
   in
-  let%lwt _ = Lwt.join [ election_timer_thread; received_votes; server ] in
-  Lwt.return (next_mode t)
+  let next () = Lwt.return (next_mode t) in
+  let all = Lwt.join [ election_timer_thread; received_votes; server ] in
+  Ok (Lwt.bind all next)

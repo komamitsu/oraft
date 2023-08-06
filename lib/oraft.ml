@@ -26,15 +26,25 @@ let state ~(conf : Conf.t) ~logger =
 
 let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
   let rec loop state_exec =
-    let%lwt next = state_exec () in
-    let next_state_exec =
-      VolatileState.update_mode state.volatile_state ~logger next;
-      match next with
-      | FOLLOWER -> Follower.run ~conf ~apply_log ~state
-      | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
-      | LEADER -> Leader.run ~conf ~apply_log ~state
-    in
-    loop next_state_exec
+    match state_exec () with
+    | Ok next_mode ->
+        let%lwt next = next_mode in
+        let next_state_exec =
+          VolatileState.update_mode state.volatile_state ~logger next;
+          match next with
+          | FOLLOWER -> Follower.run ~conf ~apply_log ~state
+          | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
+          | LEADER -> Leader.run ~conf ~apply_log ~state
+        in
+        loop next_state_exec
+    | Error msg ->
+        let msg =
+          sprintf "Failed to process. Starting from %s again. error:[%s]"
+            (Base.show_mode Base.FOLLOWER)
+            msg
+        in
+        Logger.error logger ~loc:__LOC__ msg;
+        loop (Follower.run ~conf ~apply_log ~state)
   in
   loop state_exec
 
@@ -87,6 +97,7 @@ let start ~conf_file ~apply_log =
       Ok
         {
           conf;
+          (* TODO: This isn't useful for users...? If so, we can simplify `process` *)
           process =
             process ~conf ~logger ~apply_log ~state
               ~state_exec:initial_state_exec;
