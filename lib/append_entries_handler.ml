@@ -140,7 +140,11 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
             ~msg:"Received append_entries req that has old team" ~param;
           Ok false
         )
-        else if (not (param.prev_log_term = -1 && param.prev_log_index = 0))
+        else if (not
+                   (param.prev_log_term = initial_term
+                   && param.prev_log_index = initail_log_index
+                   )
+                )
                 &&
                 match stored_prev_log with
                 | Some l -> l.term <> param.prev_log_term
@@ -155,7 +159,6 @@ let handle ~conf ~state ~logger ~apply_log ~cb_valid_request ~cb_newer_term
         )
         else (
           cb_valid_request ();
-          (* TODO: Error handling *)
           let result =
             append_entries ~conf ~logger ~state ~param ~apply_log ~cb_newer_term
               ~handle_same_term_as_newer

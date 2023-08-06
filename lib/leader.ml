@@ -38,9 +38,12 @@ type t = {
 }
 
 let init ~conf ~apply_log ~state =
+  (* TODO : Merge init and run *)
   (* TODO : Return Result type*)
   let result = PersistentLog.last_index state.persistent_log in
-  let last_log_index = match result with Ok x -> x | Error _ -> -1 in
+  let last_log_index =
+    match result with Ok x -> x | Error _ -> initail_log_index
+  in
   {
     conf;
     logger =

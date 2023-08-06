@@ -77,9 +77,8 @@ let request_vote t ~election_timer =
               {
                 term = PersistentState.current_term persistent_state;
                 candidate_id = t.conf.node_id;
-                (* TODO: A function to return this is needed? *)
-                last_log_term = 0;
-                last_log_index = 0;
+                last_log_term = initial_term;
+                last_log_index = initail_log_index;
               }
         in
         Ok (Params.request_vote_request_to_yojson r)
@@ -245,6 +244,7 @@ let run ~conf ~apply_log ~state () =
   in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request =
+    (* TODO: Is this lock needed? *)
     Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer)
   in
   let received_votes = collect_votes t ~election_timer ~vote_request in
