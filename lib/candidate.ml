@@ -245,7 +245,6 @@ let run ~conf ~apply_log ~state () =
   in
   (* Send RequestVote RPCs to all other servers *)
   let vote_request =
-    (* TODO: Is this lock needed? *)
     Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer)
   in
   let received_votes = collect_votes t ~election_timer ~vote_request in
