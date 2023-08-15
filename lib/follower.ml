@@ -101,7 +101,7 @@ let request_handlers t ~election_timer =
   handlers
 
 
-let run ~conf ~apply_log ~state () =
+let run ~conf ~apply_log ~state =
   init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   PersistentState.set_voted_for t.state.persistent_state ~logger:t.logger

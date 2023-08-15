@@ -14,7 +14,7 @@ let main ~conf_file =
         let%lwt _ = Lwt_io.printl (if result then "OK" else "ERR") in
         loop ()
       in
-      Lwt.join [ loop (); oraft.process ] |> Lwt_main.run
+      Lwt.join [ loop () ] |> Lwt_main.run
   | Error msg -> failwith msg
 
 

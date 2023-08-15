@@ -8,7 +8,6 @@ type current_state = {
 
 type t = {
   conf : Conf.t;
-  process : unit Lwt.t;
   post_command : string -> bool Lwt.t;
   current_state : unit -> current_state;
 }

@@ -221,7 +221,7 @@ let next_mode t =
       CANDIDATE
 
 
-let run ~conf ~apply_log ~state () =
+let run ~conf ~apply_log ~state =
   init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.reset_leader_id t.state.volatile_state ~logger:t.logger;
   let persistent_state = t.state.persistent_state in

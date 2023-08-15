@@ -7,7 +7,6 @@ type current_state = { mode : mode; term : int; leader : leader_node option }
 
 type t = {
   conf : Conf.t;
-  process : unit Lwt.t;
   post_command : string -> bool Lwt.t;
   current_state : unit -> current_state;
 }
@@ -24,19 +23,19 @@ let state ~(conf : Conf.t) ~logger =
   | Error msg -> Error msg
 
 
-let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
-  let rec loop state_exec =
-    match state_exec () with
-    | Ok next_mode ->
-        let%lwt next = next_mode in
-        let next_state_exec =
-          VolatileState.update_mode state.volatile_state ~logger next;
-          match next with
-          | FOLLOWER -> Follower.run ~conf ~apply_log ~state
-          | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
-          | LEADER -> Leader.run ~conf ~apply_log ~state
-        in
-        loop next_state_exec
+let process ~conf ~logger ~apply_log ~state : unit Lwt.t =
+  let exec next_mode =
+    VolatileState.update_mode state.volatile_state ~logger next_mode;
+    match next_mode with
+    | FOLLOWER -> Follower.run ~conf ~apply_log ~state
+    | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
+    | LEADER -> Leader.run ~conf ~apply_log ~state
+  in
+  let rec loop next_mode =
+    match exec next_mode with
+    | Ok next ->
+        let%lwt next_mode = next in
+        loop next_mode
     | Error msg ->
         let msg =
           sprintf "Failed to process. Starting from %s again. error:[%s]"
@@ -44,9 +43,9 @@ let process ~conf ~logger ~apply_log ~state ~state_exec : unit Lwt.t =
             msg
         in
         Logger.error logger ~loc:__LOC__ msg;
-        loop (Follower.run ~conf ~apply_log ~state)
+        loop FOLLOWER
   in
-  loop state_exec
+  loop FOLLOWER
 
 
 let post_command ~(conf : Conf.t) ~logger ~state s =
@@ -93,14 +92,10 @@ let start ~conf_file ~apply_log =
   | Ok state ->
       Logger.info logger ~loc:__LOC__ "Starting Oraft";
       let post_command = post_command ~conf ~logger ~state in
-      let initial_state_exec = Follower.run ~conf ~apply_log ~state in
+      ignore (process ~conf ~logger ~apply_log ~state);
       Ok
         {
           conf;
-          (* TODO: This isn't useful for users...? If so, we can simplify `process` *)
-          process =
-            process ~conf ~logger ~apply_log ~state
-              ~state_exec:initial_state_exec;
           post_command;
           current_state =
             (fun () ->
