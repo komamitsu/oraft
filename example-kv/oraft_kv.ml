@@ -157,4 +157,4 @@ let _ =
   in
   let oraft = oraft conf_file in
   let server = server port oraft in
-  Lwt.join [ server; oraft.process ] |> Lwt_main.run
+  Lwt.join [ server ] |> Lwt_main.run
