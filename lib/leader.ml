@@ -227,7 +227,7 @@ let request_handlers t =
   handlers
 
 
-let run ~conf ~apply_log ~state () =
+let run ~conf ~apply_log ~state =
   init ~conf ~apply_log ~state >>= fun t ->
   VolatileState.update_leader_id t.state.common.volatile_state ~logger:t.logger
     t.conf.node_id;

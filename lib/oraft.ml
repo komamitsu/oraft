@@ -27,9 +27,9 @@ let process ~conf ~logger ~apply_log ~state : unit Lwt.t =
   let exec next_mode =
     VolatileState.update_mode state.volatile_state ~logger next_mode;
     match next_mode with
-    | FOLLOWER -> Follower.run ~conf ~apply_log ~state ()
-    | CANDIDATE -> Candidate.run ~conf ~apply_log ~state ()
-    | LEADER -> Leader.run ~conf ~apply_log ~state ()
+    | FOLLOWER -> Follower.run ~conf ~apply_log ~state
+    | CANDIDATE -> Candidate.run ~conf ~apply_log ~state
+    | LEADER -> Leader.run ~conf ~apply_log ~state
   in
   let rec loop next_mode =
     match exec next_mode with
