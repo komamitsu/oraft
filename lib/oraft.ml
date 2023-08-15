@@ -32,18 +32,21 @@ let process ~conf ~logger ~apply_log ~state : unit Lwt.t =
     | LEADER -> Leader.run ~conf ~apply_log ~state
   in
   let rec loop next_mode =
-    match exec next_mode with
-    | Ok next ->
-        let%lwt next_mode = next in
-        loop next_mode
-    | Error msg ->
-        let msg =
-          sprintf "Failed to process. Starting from %s again. error:[%s]"
-            (Base.show_mode Base.FOLLOWER)
-            msg
-        in
-        Logger.error logger ~loc:__LOC__ msg;
-        loop FOLLOWER
+    let%lwt next_mode =
+      match exec next_mode with
+      | Ok next ->
+          let%lwt next_mode = next in
+          Lwt.return next_mode
+      | Error msg ->
+          let msg =
+            sprintf "Failed to process. Starting from %s again. error:[%s]"
+              (Base.show_mode Base.FOLLOWER)
+              msg
+          in
+          Logger.error logger ~loc:__LOC__ msg;
+          Lwt.return FOLLOWER
+    in
+    loop next_mode
   in
   loop FOLLOWER
 
@@ -91,8 +94,11 @@ let start ~conf_file ~apply_log =
   match state ~conf ~logger with
   | Ok state ->
       Logger.info logger ~loc:__LOC__ "Starting Oraft";
+      ignore
+        (let%lwt _ = process ~conf ~logger ~apply_log ~state in
+         Lwt.return ()
+        );
       let post_command = post_command ~conf ~logger ~state in
-      ignore (process ~conf ~logger ~apply_log ~state);
       Ok
         {
           conf;
