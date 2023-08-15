@@ -238,14 +238,12 @@ let run ~conf ~apply_log ~state =
   let election_timer =
     Timer.create ~logger:t.logger ~timeout_millis:t.conf.election_timeout_millis
   in
+  (* Send RequestVote RPCs to all other servers *)
+  let vote_request = request_vote t ~election_timer in
   let handlers = request_handlers t ~election_timer in
   let server, stopper =
     Request_dispatcher.create ~port:(Conf.my_node t.conf).port ~logger:t.logger
       ~table:handlers
-  in
-  (* Send RequestVote RPCs to all other servers *)
-  let vote_request =
-    Lwt_mutex.with_lock t.lock (fun () -> request_vote t ~election_timer)
   in
   let received_votes = collect_votes t ~election_timer ~vote_request in
   let election_timer_thread =
