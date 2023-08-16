@@ -109,7 +109,6 @@ let request_vote t ~election_timer =
   | Error msg ->
       Logger.error t.logger ~loc:__LOC__
         (sprintf "request_vote failed. error:[%s]" msg);
-      (* TODO: Revisit here *)
       Lwt_list.map_p Lwt.return []
 
 
@@ -174,6 +173,8 @@ let request_handlers t ~election_timer =
 
 let collect_votes t ~election_timer ~vote_request =
   let%lwt responses = vote_request in
+  (* `request_vote` returns an empty list when an error occurs.
+     It results in n = 1 and doesn't reach the majority *)
   let%lwt n =
     Lwt.return
       (List.fold_left ~init:1 (* Implicitly voting for myself *)
@@ -251,7 +252,7 @@ let run ~conf ~apply_log ~state =
   let election_timer_thread =
     Timer.start election_timer ~on_stop:(fun () ->
         Lwt.wakeup stopper ();
-        Lwt.cancel vote_request
+        Lwt.cancel received_votes
     )
   in
   let next () = Lwt.return (next_mode t) in
