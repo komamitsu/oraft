@@ -13,6 +13,7 @@ Library of [Raft consensus algorithm](https://raft.github.io/raft.pdf) implement
 
 ## Requirement
 
+- OCaml 4.14 or later
 - opam
 - dune
 
