@@ -24,10 +24,10 @@
  (depends
   (ocaml (>= 4.14.0))
   dune
-  (core (>= v0.9.0))
-  (core_unix (>= v0.9.0))
+  (core (>= v0.16.0))
+  (core_unix (>= v0.16.0))
   (cohttp-lwt-unix (>= 5.0.0))
-  sqlite3
+  (sqlite3 (>= 5.0.0))
   yojson
   lwt_ppx
   ppx_deriving
@@ -35,6 +35,5 @@
   (ounit :with-test)
   (fileutils :with-test)
  )
- (tags (Raft Lwt)))
+ (tags (Raft lwt)))
 
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
