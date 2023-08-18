@@ -6,17 +6,17 @@ description: "Raft consensus algorithm implemented in OCaml"
 maintainer: ["komamitsu@gmail.com"]
 authors: ["Mitsunori Komatsu"]
 license: "Apache-2.0"
-tags: ["Raft" "Lwt"]
+tags: ["Raft" "lwt"]
 homepage: "https://github.com/komamitsu/oraft"
 doc: "https://github.com/komamitsu/oraft"
 bug-reports: "https://github.com/komamitsu/oraft/issues"
 depends: [
   "ocaml" {>= "4.14.0"}
   "dune" {>= "3.6"}
-  "core" {>= "v0.9.0"}
-  "core_unix" {>= "v0.9.0"}
+  "core" {>= "v0.16.0"}
+  "core_unix" {>= "v0.16.0"}
   "cohttp-lwt-unix" {>= "5.0.0"}
-  "sqlite3"
+  "sqlite3" {>= "5.0.0"}
   "yojson"
   "lwt_ppx"
   "ppx_deriving"

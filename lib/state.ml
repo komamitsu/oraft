@@ -183,7 +183,7 @@ module PersistentLog = struct
 
   let setup_db ~path ~logger =
     let db = Sqlite3.db_open path in
-    let sql = "select count(1) from sqlite_schema where name = :table_name" in
+    let sql = "select count(1) from sqlite_master where name = :table_name" in
     exec_sql_with_result ~db ~logger
       ~cb:(fun count row ->
         let count_result = Array.get row 0 in
